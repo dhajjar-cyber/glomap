@@ -282,6 +282,14 @@ bool GlobalMapper::Solve(const colmap::Database& database,
     std::cout << "-------------------------------------" << std::endl;
     std::cout << "Running retriangulation ..." << std::endl;
     std::cout << "-------------------------------------" << std::endl;
+    
+    // Build set of image names for database filtering
+    std::unordered_set<std::string> image_names;
+    for (const auto& [img_id, image] : images) {
+      image_names.insert(image.file_name);
+    }
+    LOG(INFO) << "Retriangulation filtering to " << image_names.size() << " images";
+    
     for (int ite = 0; ite < options_.num_iteration_retriangulation; ite++) {
       colmap::Timer run_timer;
       run_timer.Start();
@@ -291,7 +299,8 @@ bool GlobalMapper::Solve(const colmap::Database& database,
                           cameras,
                           frames,
                           images,
-                          tracks);
+                          tracks,
+                          image_names);
       run_timer.PrintSeconds();
 
       std::cout << "-------------------------------------" << std::endl;

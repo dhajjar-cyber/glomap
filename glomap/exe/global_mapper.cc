@@ -18,6 +18,7 @@ int RunMapper(int argc, char** argv) {
   std::string output_path;
 
   std::string image_path = "";
+  std::string image_list_path = "";
   std::string constraint_type = "ONLY_POINTS";
   std::string output_format = "bin";
 
@@ -25,6 +26,7 @@ int RunMapper(int argc, char** argv) {
   options.AddRequiredOption("database_path", &database_path);
   options.AddRequiredOption("output_path", &output_path);
   options.AddDefaultOption("image_path", &image_path);
+  options.AddDefaultOption("image_list_path", &image_list_path);
   options.AddDefaultOption("constraint_type",
                            &constraint_type,
                            "{ONLY_POINTS, ONLY_CAMERAS, "
@@ -71,7 +73,7 @@ int RunMapper(int argc, char** argv) {
   std::unordered_map<track_t, Track> tracks;
 
   auto database = colmap::Database::Open(database_path);
-  ConvertDatabaseToGlomap(*database, view_graph, rigs, cameras, frames, images);
+  ConvertDatabaseToGlomap(*database, view_graph, rigs, cameras, frames, images, image_list_path);
 
   if (view_graph.image_pairs.empty()) {
     LOG(ERROR) << "Can't continue without image pairs";
@@ -98,7 +100,8 @@ int RunMapper(int argc, char** argv) {
                             images,
                             tracks,
                             output_format,
-                            image_path);
+                            image_path,
+                            image_list_path);
   LOG(INFO) << "Export to COLMAP reconstruction done";
 
   return EXIT_SUCCESS;

@@ -13,7 +13,8 @@ void WriteGlomapReconstruction(
     const std::unordered_map<image_t, Image>& images,
     const std::unordered_map<track_t, Track>& tracks,
     const std::string output_format = "bin",
-    const std::string image_path = "");
+    const std::string image_path = "",
+    const std::string image_list_path = "");
 
 void WriteColmapReconstruction(const std::string& reconstruction_path,
                                const colmap::Reconstruction& reconstruction,

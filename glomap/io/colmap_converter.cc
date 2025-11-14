@@ -4,6 +4,9 @@
 
 #include "colmap/scene/reconstruction_io_utils.h"
 
+#include <fstream>
+#include <algorithm>
+
 namespace glomap {
 
 void ConvertGlomapToColmapImage(const Image& image,
@@ -215,9 +218,41 @@ void ConvertDatabaseToGlomap(const colmap::Database& database,
                              std::unordered_map<rig_t, Rig>& rigs,
                              std::unordered_map<camera_t, Camera>& cameras,
                              std::unordered_map<frame_t, Frame>& frames,
-                             std::unordered_map<image_t, Image>& images) {
+                             std::unordered_map<image_t, Image>& images,
+                             const std::string& image_list_path) {
+  // Load image filter list if provided
+  std::set<image_t> allowed_image_ids;
+  if (!image_list_path.empty()) {
+    std::ifstream file(image_list_path);
+    if (!file.is_open()) {
+      LOG(ERROR) << "Failed to open image list file: " << image_list_path;
+    } else {
+      image_t id;
+      while (file >> id) {
+        allowed_image_ids.insert(id);
+      }
+      file.close();
+      LOG(INFO) << "Loaded " << allowed_image_ids.size() 
+                << " image IDs from filter list";
+    }
+  }
+
   // Add the images
   std::vector<colmap::Image> images_colmap = database.ReadAllImages();
+  
+  // Filter images if list provided
+  if (!allowed_image_ids.empty()) {
+    size_t original_count = images_colmap.size();
+    images_colmap.erase(
+      std::remove_if(images_colmap.begin(), images_colmap.end(),
+        [&](const colmap::Image& img) {
+          return allowed_image_ids.find(img.ImageId()) == allowed_image_ids.end();
+        }),
+      images_colmap.end());
+    LOG(INFO) << "Filtered images: " << original_count << " -> " 
+              << images_colmap.size();
+  }
+  
   image_t counter = 0;
   for (auto& image : images_colmap) {
     std::cout << "\r Loading Images " << counter + 1 << " / "
@@ -255,7 +290,21 @@ void ConvertDatabaseToGlomap(const colmap::Database& database,
 
   // Add the cameras
   std::vector<colmap::Camera> cameras_colmap = database.ReadAllCameras();
+  
+  // Build set of camera IDs used by filtered images
+  std::set<camera_t> used_camera_ids;
+  if (!allowed_image_ids.empty()) {
+    for (const auto& [image_id, image] : images) {
+      used_camera_ids.insert(image.camera_id);
+    }
+  }
+  
   for (auto& camera : cameras_colmap) {
+    // Filter cameras if image filtering is active
+    if (!allowed_image_ids.empty() && 
+        used_camera_ids.find(camera.camera_id) == used_camera_ids.end()) {
+      continue;  // Skip unused cameras
+    }
     cameras[camera.camera_id] = camera;
   }
 
@@ -270,6 +319,21 @@ void ConvertDatabaseToGlomap(const colmap::Database& database,
   for (auto& frame : frames_colmap) {
     frame_t frame_id = frame.FrameId();
     if (frame_id == colmap::kInvalidFrameId) continue;
+    
+    // Filter frames: only keep frames where ALL referenced images are in the filtered set
+    if (!allowed_image_ids.empty()) {
+      bool all_images_valid = true;
+      for (auto data_id : frame.ImageIds()) {
+        if (images.find(data_id.id) == images.end()) {
+          all_images_valid = false;
+          break;
+        }
+      }
+      if (!all_images_valid) {
+        continue;  // Skip this frame
+      }
+    }
+    
     frames[frame_id] = Frame(frame);
     frames[frame_id].SetRigId(frame.RigId());
     frames[frame_id].SetRigPtr(rigs.find(frame.RigId()) != rigs.end()
@@ -341,9 +405,16 @@ void ConvertDatabaseToGlomap(const colmap::Database& database,
   std::vector<std::pair<colmap::image_pair_t, colmap::FeatureMatches>>
       all_matches = database.ReadAllMatches();
 
-  // Go through all matches and store the matche with enough observations in
-  // the view_graph
+  // Build set of valid image IDs for fast lookup
+  std::set<image_t> valid_image_ids;
+  for (const auto& [image_id, image] : images) {
+    valid_image_ids.insert(image_id);
+  }
+
+  // Go through all matches and store the matches with enough observations in
+  // the view_graph (filtering out pairs with excluded images)
   size_t invalid_count = 0;
+  size_t filtered_pair_count = 0;
   std::unordered_map<image_pair_t, ImagePair>& image_pairs =
       view_graph.image_pairs;
   for (size_t match_idx = 0; match_idx < all_matches.size(); match_idx++) {
@@ -356,6 +427,13 @@ void ConvertDatabaseToGlomap(const colmap::Database& database,
         colmap::PairIdToImagePair(pair_id);
     colmap::image_t image_id1 = image_pair_colmap.first;
     colmap::image_t image_id2 = image_pair_colmap.second;
+
+    // Skip pairs where either image is not in the filtered set
+    if (valid_image_ids.find(image_id1) == valid_image_ids.end() ||
+        valid_image_ids.find(image_id2) == valid_image_ids.end()) {
+      filtered_pair_count++;
+      continue;
+    }
 
     colmap::FeatureMatches& feature_matches = all_matches[match_idx].second;
 
@@ -423,6 +501,10 @@ void ConvertDatabaseToGlomap(const colmap::Database& database,
 
   LOG(INFO) << "Pairs read done. " << invalid_count << " / "
             << view_graph.image_pairs.size() << " are invalid";
+  if (filtered_pair_count > 0) {
+    LOG(INFO) << "Filtered out " << filtered_pair_count 
+              << " pairs with excluded images";
+  }
 }
 
 void CreateOneRigPerCamera(const std::unordered_map<camera_t, Camera>& cameras,

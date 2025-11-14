@@ -5,6 +5,8 @@ find_package(CHOLMOD QUIET)
 if(NOT TARGET SuiteSparse::CHOLMOD)
     find_package(SuiteSparse COMPONENTS CHOLMOD REQUIRED)
 endif()
+# Find abseil before Ceres since Ceres depends on it
+find_package(absl REQUIRED)
 find_package(Ceres REQUIRED COMPONENTS SuiteSparse)
 find_package(Boost REQUIRED)
 find_package(OpenMP REQUIRED COMPONENTS C CXX)
