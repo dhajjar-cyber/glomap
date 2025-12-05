@@ -104,7 +104,7 @@ This document outlines the high-level pipeline of the GLOMAP-based Structure-fro
 *   **Code Reference:**
     *   **Estimator:** `glomap/estimators/bundle_adjustment.cc` (`BundleAdjuster::Solve`)
 
-## Phase 8: Retriangulation
+## Phase 9: Retriangulation
 *   **Goal:** Improve the density and accuracy of the 3D structure by re-triangulating points using the refined camera poses.
 *   **Action:**
     *   Uses the refined camera poses from Phase 7 to identify new matches or improve existing ones.
@@ -117,14 +117,14 @@ This document outlines the high-level pipeline of the GLOMAP-based Structure-fro
 *   **Code Reference:**
     *   **Controller:** `glomap/controllers/track_retriangulation.cc` (`RetriangulateTracks`)
 
-## Phase 9: Reconstruction Pruning
+## Phase 10: Reconstruction Pruning
 *   **Goal:** Remove low-quality data to ensure a clean final output.
 *   **Action:**
     *   Prunes weakly connected images and tracks that do not meet the quality criteria after all optimizations.
 *   **Code Reference:**
     *   **Processor:** `glomap/processors/reconstruction_pruning.cc`
 
-## Phase 10: Export & Conversion
+## Phase 11: Export & Conversion
 *   **Goal:** Convert the binary GLOMAP output into human-readable formats and standard point clouds for visualization.
 *   **Action:**
     *   **TXT Conversion:** Uses `colmap model_converter` to convert binary files to text (`cameras.txt`, `images.txt`, `points3D.txt`).
@@ -136,7 +136,7 @@ This document outlines the high-level pipeline of the GLOMAP-based Structure-fro
 *   **Code Reference:**
     *   **Script:** `modules/phase_1/scripts/SFM/run_glomap_batch.sh` (Export section)
 
-## Phase 11: Quality Analysis & Visualization
+## Phase 12: Quality Analysis & Visualization
 *   **Goal:** Assess the quality of the reconstruction and generate visual aids.
 *   **Action:**
     *   **Quality Metrics:** Runs `analyze_reconstruction_quality.py` to calculate statistics like:
