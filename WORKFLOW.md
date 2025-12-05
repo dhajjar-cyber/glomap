@@ -51,7 +51,7 @@ This document outlines the high-level pipeline of the GLOMAP-based Structure-fro
     *   **Estimator:** `glomap/estimators/relpose_estimation.cc` (`EstimateRelativePoses`)
     *   **Filter:** `glomap/processors/relpose_filter.cc` (`FilterInlierNum`, `FilterInlierRatio`)
 
-## Phase 4: Rotation Averaging
+## Phase 5: Rotation Averaging
 *   **Goal:** Solve for the global orientation of every camera.
 *   **Action:**
     *   Takes pairwise relative rotations and solves a global optimization problem to find absolute rotations.
@@ -60,7 +60,7 @@ This document outlines the high-level pipeline of the GLOMAP-based Structure-fro
     *   **Controller:** `glomap/controllers/rotation_averager.cc` (`SolveRotationAveraging`)
     *   **Estimator:** `glomap/estimators/global_rotation_averaging.cc`
 
-## Phase 5: Track Establishment
+## Phase 6: Track Establishment
 *   **Goal:** Convert pairwise feature matches into global feature tracks.
 *   **Action:**
     *   Aggregates pairwise matches from the database into a graph structure.
@@ -74,7 +74,7 @@ This document outlines the high-level pipeline of the GLOMAP-based Structure-fro
     *   **Controller:** `glomap/controllers/track_establishment.cc` (`TrackEngine`)
     *   **Filter:** `glomap/processors/track_filter.cc`
 
-## Phase 6: Global Positioning
+## Phase 7: Global Positioning
 *   **Goal:** Solve for the absolute position of all cameras simultaneously.
 *   **Action:**
     *   Uses the computed global rotations and pairwise translations to solve for camera centers.
@@ -91,7 +91,7 @@ This document outlines the high-level pipeline of the GLOMAP-based Structure-fro
 *   **Code Reference:**
     *   **Estimator:** `glomap/estimators/global_positioning.cc` (`GlobalPositioner::Solve`)
 
-## Phase 7: Bundle Adjustment
+## Phase 8: Bundle Adjustment & Refinement
 *   **Goal:** Refine the structure (3D points) and motion (camera parameters) to minimize reprojection error.
 *   **Action:**
     *   Performs a global non-linear optimization on the entire reconstruction.
