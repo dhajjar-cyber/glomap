@@ -22,14 +22,17 @@ This document outlines the high-level pipeline of the GLOMAP-based Structure-fro
 *   **Action:**
     *   **Configuration Update:** Updates image pair configurations based on camera intrinsics (e.g., forcing Essential matrix if intrinsics are known).
     *   **Relative Pose Decomposition:** Decomposes existing Fundamental/Essential matrices into initial relative rotations and translations ($R, t$) where possible. This provides a starting point for the subsequent optimization phases.
+    *   **Prior Handling:** Checks the `cameras` table in `database.db` for the `prior_focal_length` flag. If set, the focal length is treated as a hard constraint in subsequent phases.
 *   **Code Reference:**
     *   **Processor:** `glomap/processors/view_graph_manipulation.cc` (`DecomposeRelPose`)
+    *   **Loader:** `glomap/io/colmap_converter.cc` (Reads `prior_focal_length` from DB)
 
 ## Phase 3: View Graph Calibration
 *   **Goal:** Refine camera intrinsics (focal length, principal point) using the geometric constraints of the view graph before solving for poses.
 *   **Action:**
     *   Formulates a global optimization problem using Ceres Solver.
     *   Optimizes camera parameters to maximize the consistency of pairwise geometries (Fundamental matrices).
+    *   **Constraint Enforcement:** If `camera.has_prior_focal_length` is true (from Phase 2), the focal length parameter is set to **constant** (`SetParameterBlockConstant`), preventing the optimizer from changing it. This ensures that manually provided or EXIF-derived focal lengths are respected.
 *   **Code Reference:**
     *   **Orchestrator:** `glomap/controllers/global_mapper.cc` (Step 1)
     *   **Estimator:** `glomap/estimators/view_graph_calibration.cc` (`ViewGraphCalibrator::Solve`)

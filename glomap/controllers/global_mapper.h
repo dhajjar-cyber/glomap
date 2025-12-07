@@ -39,6 +39,9 @@ struct GlobalMapperOptions {
   bool skip_bundle_adjustment = false;
   bool skip_retriangulation = false;
   bool skip_pruning = true;
+
+  // Output path for checkpoints
+  std::string output_path = "";
 };
 
 // TODO: Refactor the code to reuse the pipeline code more

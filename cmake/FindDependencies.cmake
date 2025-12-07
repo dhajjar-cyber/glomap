@@ -28,8 +28,6 @@ include(FetchContent)
 FetchContent_Declare(PoseLib
     GIT_REPOSITORY    https://github.com/PoseLib/PoseLib.git
     GIT_TAG           7e9f5f53372e43f89655040d4dfc4a00e5ace11c  # 2.0.5
-    EXCLUDE_FROM_ALL
-    SYSTEM
 )
 message(STATUS "Configuring PoseLib...")
 if (FETCH_POSELIB)

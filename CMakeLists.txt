@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.28)
+cmake_minimum_required(VERSION 3.22)
 
 option(CUDA_ENABLED "Whether to enable CUDA, if available" ON)
 option(TESTS_ENABLED "Whether to build test binaries" OFF)

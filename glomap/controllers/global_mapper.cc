@@ -2,6 +2,7 @@
 
 #include "glomap/controllers/rotation_averager.h"
 #include "glomap/io/colmap_converter.h"
+#include "glomap/io/colmap_io.h"
 #include "glomap/processors/image_pair_inliers.h"
 #include "glomap/processors/image_undistorter.h"
 #include "glomap/processors/reconstruction_normalizer.h"
@@ -114,6 +115,11 @@ bool GlobalMapper::Solve(const colmap::Database& database,
               << " images are within the connected component." << std::endl;
 
     run_timer.PrintSeconds();
+
+    // Checkpoint after Rotation Averaging
+    LOG(INFO) << "Checkpointing after Rotation Averaging...";
+    WriteGlomapReconstruction(options_.output_path + "/checkpoint_rotation", 
+                              rigs, cameras, frames, images, tracks, "bin", "");
   }
 
   // 4. Track establishment and selection
@@ -134,6 +140,11 @@ bool GlobalMapper::Solve(const colmap::Database& database,
               << ", after filtering: " << num_tracks << std::endl;
 
     run_timer.PrintSeconds();
+
+    // Checkpoint after Track Establishment
+    LOG(INFO) << "Checkpointing after Track Establishment...";
+    WriteGlomapReconstruction(options_.output_path + "/checkpoint_tracks", 
+                              rigs, cameras, frames, images, tracks, "bin", "");
   }
 
   // 5. Global positioning
@@ -186,6 +197,11 @@ bool GlobalMapper::Solve(const colmap::Database& database,
     NormalizeReconstruction(rigs, cameras, frames, images, tracks);
 
     run_timer.PrintSeconds();
+
+    // Checkpoint after Global Positioning
+    LOG(INFO) << "Checkpointing after Global Positioning...";
+    WriteGlomapReconstruction(options_.output_path + "/checkpoint_gp", 
+                              rigs, cameras, frames, images, tracks, "bin", "");
   }
 
   // 6. Bundle adjustment

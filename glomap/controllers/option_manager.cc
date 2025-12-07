@@ -152,6 +152,9 @@ void OptionManager::AddRelativePoseEstimationOptions() {
   AddAndRegisterDefaultOption(
       "RelPoseEstimation.max_epipolar_error",
       &mapper->opt_relpose.ransac_options.max_epipolar_error);
+  AddAndRegisterDefaultOption(
+      "RelPoseEstimation.max_iterations",
+      &mapper->opt_relpose.ransac_options.max_iterations);
 }
 
 void OptionManager::AddRotationEstimatorOptions() {
@@ -292,6 +295,7 @@ void OptionManager::Reset() {
   options_int_.clear();
   options_double_.clear();
   options_string_.clear();
+  options_size_t_.clear();
 
   added_mapper_options_ = false;
   added_view_graph_calibration_options_ = false;

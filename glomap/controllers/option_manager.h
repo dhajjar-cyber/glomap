@@ -79,6 +79,7 @@ class OptionManager {
   std::vector<std::pair<std::string, const int*>> options_int_;
   std::vector<std::pair<std::string, const double*>> options_double_;
   std::vector<std::pair<std::string, const std::string*>> options_string_;
+  std::vector<std::pair<std::string, const size_t*>> options_size_t_;
 
   bool added_database_options_ = false;
   bool added_image_options_ = false;
@@ -145,6 +146,8 @@ void OptionManager::RegisterOption(const std::string& name, const T* option) {
   } else if (std::is_same<T, std::string>::value) {
     options_string_.emplace_back(name,
                                  reinterpret_cast<const std::string*>(option));
+  } else if (std::is_same<T, size_t>::value) {
+    options_size_t_.emplace_back(name, reinterpret_cast<const size_t*>(option));
   } else {
     LOG(ERROR) << "Unsupported option type: " << name;
   }
