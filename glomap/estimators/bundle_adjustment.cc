@@ -117,8 +117,17 @@ bool BundleAdjuster::Solve(std::unordered_map<rig_t, Rig>& rigs,
 #endif  // GLOMAP_CUDA_ENABLED
 
   // Do not use the iterative solver, as it does not seem to be helpful
-  options_.solver_options.linear_solver_type = ceres::SPARSE_SCHUR;
-  options_.solver_options.preconditioner_type = ceres::CLUSTER_TRIDIAGONAL;
+  if (tracks.size() > 200000) {
+     LOG(INFO) << "Large problem detected (" << tracks.size() << " tracks). "
+               << "Switching to ITERATIVE_SCHUR + SCHUR_POWER_SERIES_EXPANSION to save memory.";
+     options_.solver_options.linear_solver_type = ceres::ITERATIVE_SCHUR;
+     options_.solver_options.preconditioner_type = ceres::SCHUR_POWER_SERIES_EXPANSION;
+     options_.solver_options.use_explicit_schur_complement = false;
+     options_.solver_options.use_spse_initialization = true;
+  } else {
+     options_.solver_options.linear_solver_type = ceres::SPARSE_SCHUR;
+     options_.solver_options.preconditioner_type = ceres::CLUSTER_TRIDIAGONAL;
+  }
 
   options_.solver_options.minimizer_progress_to_stdout = VLOG_IS_ON(2);
   ceres::Solve(options_.solver_options, problem_.get(), &summary);

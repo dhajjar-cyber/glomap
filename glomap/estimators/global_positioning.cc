@@ -245,7 +245,7 @@ void GlobalPositioner::AddPointToCameraConstraints(
 
   const size_t num_cam_to_cam = problem_->NumResidualBlocks();
   // Find the tracks that are relevant to the current set of cameras
-  const size_t num_pt_to_cam = tracks.size();
+  const size_t num_pt_to_cam = filtered_tracks_.size();
 
   VLOG(2) << num_pt_to_cam
           << " point to camera constriants were added to the position "
@@ -580,8 +580,19 @@ void GlobalPositioner::ParameterizeVariables(
   // Set up the options for the solver
   // Do not use iterative solvers, for its suboptimal performance.
   if (tracks.size() > 0) {
-    options_.solver_options.linear_solver_type = ceres::SPARSE_SCHUR;
-    options_.solver_options.preconditioner_type = ceres::CLUSTER_TRIDIAGONAL;
+    // For very large problems, SPARSE_SCHUR consumes too much memory (O(N^2)).
+    // Switch to ITERATIVE_SCHUR with the memory-efficient Power Series preconditioner.
+    if (tracks.size() > 200000) {
+       LOG(INFO) << "Large problem detected (" << tracks.size() << " tracks). "
+                 << "Switching to ITERATIVE_SCHUR + SCHUR_POWER_SERIES_EXPANSION to save memory.";
+       options_.solver_options.linear_solver_type = ceres::ITERATIVE_SCHUR;
+       options_.solver_options.preconditioner_type = ceres::SCHUR_POWER_SERIES_EXPANSION;
+       options_.solver_options.use_explicit_schur_complement = false;
+       options_.solver_options.use_spse_initialization = true;
+    } else {
+       options_.solver_options.linear_solver_type = ceres::SPARSE_SCHUR;
+       options_.solver_options.preconditioner_type = ceres::CLUSTER_TRIDIAGONAL;
+    }
   } else {
     options_.solver_options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
     options_.solver_options.preconditioner_type = ceres::JACOBI;

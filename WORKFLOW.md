@@ -219,6 +219,11 @@ For very large datasets (e.g., >10 million tracks), the standard pipeline may cr
     *   The system sorts all available tracks by their "strength" (number of observations).
     *   It selects the top $N$ tracks (e.g., 3,000,000) to build the optimization problem.
     *   This ensures the solver stays within safe limits while using the best available data.
+*   **Iterative Solver (New Feature):**
+    *   **Problem:** The default `SPARSE_SCHUR` solver builds a dense Schur complement matrix in RAM, which is $O(N^2)$ and causes OOM crashes for >2M tracks.
+    *   **Solution:** We modified `global_positioning.cc` and `bundle_adjustment.cc` to automatically switch to `ITERATIVE_SCHUR` with `SCHUR_POWER_SERIES_EXPANSION` preconditioner when `tracks.size() > 200,000`.
+    *   **Benefit:** This solver is "matrix-free" (does not build the dense matrix), reducing memory usage from >250GB to <32GB for large problems.
+    *   **Revert Instructions:** To disable this behavior and return to the default solver (if you have >512GB RAM), edit `glomap/estimators/global_positioning.cc` and `glomap/estimators/bundle_adjustment.cc`. Remove the `if (tracks.size() > 200000)` block and force `linear_solver_type = ceres::SPARSE_SCHUR`.
 *   **Configuration:**
     *   `MAX_TRACKS_GP`: Controls Global Positioning limit.
     *   `MAX_TRACKS_BA`: Controls Bundle Adjustment limit.
