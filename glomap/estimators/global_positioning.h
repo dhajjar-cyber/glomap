@@ -35,6 +35,8 @@ struct GlobalPositionerOptions : public OptimizationBaseOptions {
 
   // Constrain the minimum number of views per track
   int min_num_view_per_track = 3;
+  // Constrain the maximum number of tracks (prioritizing longest tracks)
+  int max_num_tracks = -1;
 
   // Random seed
   unsigned seed = 1;
@@ -130,6 +132,9 @@ class GlobalPositioner {
   std::vector<double> scales_;
 
   std::unordered_map<rig_t, double> rig_scales_;
+
+  // Filtered tracks for optimization
+  std::unordered_set<track_t> filtered_tracks_;
 };
 
 }  // namespace glomap

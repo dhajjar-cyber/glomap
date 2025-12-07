@@ -25,6 +25,8 @@ struct BundleAdjusterOptions : public OptimizationBaseOptions {
 
   // Constrain the minimum number of views per track
   int min_num_view_per_track = 3;
+  // Constrain the maximum number of tracks (prioritizing longest tracks)
+  int max_num_tracks = -1;
 
   BundleAdjusterOptions() : OptimizationBaseOptions() {
     thres_loss_function = 1.;
@@ -79,6 +81,9 @@ class BundleAdjuster {
 
   std::unique_ptr<ceres::Problem> problem_;
   std::shared_ptr<ceres::LossFunction> loss_function_;
+
+  // Filtered tracks for optimization
+  std::unordered_set<track_t> filtered_tracks_;
 };
 
 }  // namespace glomap

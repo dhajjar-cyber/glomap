@@ -49,6 +49,31 @@ bool GlobalPositioner::Solve(const ViewGraph& view_graph,
     return false;
   }
 
+  // Filter tracks
+  filtered_tracks_.clear();
+  if (options_.max_num_tracks > 0 && tracks.size() > options_.max_num_tracks) {
+    LOG(INFO) << "Filtering tracks for Global Positioning: " << tracks.size()
+              << " -> " << options_.max_num_tracks;
+    std::vector<std::pair<size_t, track_t>> track_lengths;
+    track_lengths.reserve(tracks.size());
+    for (const auto& [track_id, track] : tracks) {
+      track_lengths.emplace_back(track.observations.size(), track_id);
+    }
+    // Sort descending
+    std::partial_sort(track_lengths.begin(),
+                      track_lengths.begin() + options_.max_num_tracks,
+                      track_lengths.end(),
+                      std::greater<std::pair<size_t, track_t>>());
+    
+    for (int i = 0; i < options_.max_num_tracks; ++i) {
+      filtered_tracks_.insert(track_lengths[i].second);
+    }
+  } else {
+    for (const auto& [track_id, track] : tracks) {
+      filtered_tracks_.insert(track_id);
+    }
+  }
+
   LOG(INFO) << "Setting up the global positioner problem";
 
   // Setup the problem.
@@ -107,11 +132,11 @@ void GlobalPositioner::SetupProblem(
   scales_.clear();
   scales_.reserve(
       view_graph.image_pairs.size() +
-      std::accumulate(tracks.begin(),
-                      tracks.end(),
+      std::accumulate(filtered_tracks_.begin(),
+                      filtered_tracks_.end(),
                       0,
-                      [](int sum, const std::pair<track_t, Track>& track) {
-                        return sum + track.second.observations.size();
+                      [&tracks](int sum, const track_t track_id) {
+                        return sum + tracks.at(track_id).observations.size();
                       }));
 
   // Initialize the rig scales to be 1.0.
@@ -133,9 +158,10 @@ void GlobalPositioner::InitializeRandomPositions(
     constrained_positions.insert(images[image_pair.image_id2].frame_id);
   }
 
-  for (const auto& [track_id, track] : tracks) {
+  for (const auto& track_id : filtered_tracks_) {
+    const auto& track = tracks.at(track_id);
     if (track.observations.size() < options_.min_num_view_per_track) continue;
-    for (const auto& observation : tracks[track_id].observations) {
+    for (const auto& observation : track.observations) {
       if (images.find(observation.first) == images.end()) continue;
       Image& image = images[observation.first];
       if (!image.IsRegistered()) continue;
@@ -254,7 +280,8 @@ void GlobalPositioner::AddPointToCameraConstraints(
     loss_function_ptcam_calibrated_ = loss_function_;
   }
 
-  for (auto& [track_id, track] : tracks) {
+  for (const auto& track_id : filtered_tracks_) {
+    auto& track = tracks.at(track_id);
     if (track.observations.size() < options_.min_num_view_per_track) continue;
 
     // Only set the points to be random if they are needed to be optimized
@@ -392,8 +419,9 @@ void GlobalPositioner::AddCamerasAndPointsToParameterGroups(
 
   // Add point parameters to group 1.
   int group_id = 1;
-  if (tracks.size() > 0) {
-    for (auto& [track_id, track] : tracks) {
+  if (filtered_tracks_.size() > 0) {
+    for (const auto& track_id : filtered_tracks_) {
+      auto& track = tracks.at(track_id);
       if (problem_->HasParameterBlock(track.xyz.data()))
         parameter_ordering->AddElementToGroup(track.xyz.data(), group_id);
     }
@@ -465,7 +493,8 @@ void GlobalPositioner::ParameterizeVariables(
 
   // If do not optimize the rotations, set the camera rotations to be constant
   if (!options_.optimize_points) {
-    for (auto& [track_id, track] : tracks) {
+    for (const auto& track_id : filtered_tracks_) {
+      auto& track = tracks.at(track_id);
       if (problem_->HasParameterBlock(track.xyz.data())) {
         problem_->SetParameterBlockConstant(track.xyz.data());
       }

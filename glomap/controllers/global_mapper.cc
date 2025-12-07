@@ -56,6 +56,7 @@ bool GlobalMapper::Solve(const colmap::Database& database,
     std::cout << "-------------------------------------" << std::endl;
     std::cout << "Running relative pose estimation ..." << std::endl;
     std::cout << "-------------------------------------" << std::endl;
+    std::cout << "RANSAC Max Iterations: " << options_.opt_relpose.ransac_options.max_iterations << std::endl;
 
     colmap::Timer run_timer;
     run_timer.Start();
@@ -120,6 +121,7 @@ bool GlobalMapper::Solve(const colmap::Database& database,
     LOG(INFO) << "Checkpointing after Rotation Averaging...";
     WriteGlomapReconstruction(options_.output_path + "/checkpoint_rotation", 
                               rigs, cameras, frames, images, tracks, "bin", "");
+    WriteViewGraph(options_.output_path + "/checkpoint_rotation/view_graph.bin", view_graph);
   }
 
   // 4. Track establishment and selection
@@ -145,6 +147,7 @@ bool GlobalMapper::Solve(const colmap::Database& database,
     LOG(INFO) << "Checkpointing after Track Establishment...";
     WriteGlomapReconstruction(options_.output_path + "/checkpoint_tracks", 
                               rigs, cameras, frames, images, tracks, "bin", "");
+    WriteViewGraph(options_.output_path + "/checkpoint_tracks/view_graph.bin", view_graph);
   }
 
   // 5. Global positioning
@@ -202,6 +205,7 @@ bool GlobalMapper::Solve(const colmap::Database& database,
     LOG(INFO) << "Checkpointing after Global Positioning...";
     WriteGlomapReconstruction(options_.output_path + "/checkpoint_gp", 
                               rigs, cameras, frames, images, tracks, "bin", "");
+    WriteViewGraph(options_.output_path + "/checkpoint_gp/view_graph.bin", view_graph);
   }
 
   // 6. Bundle adjustment

@@ -23,6 +23,31 @@ bool BundleAdjuster::Solve(std::unordered_map<rig_t, Rig>& rigs,
     return false;
   }
 
+  // Filter tracks
+  filtered_tracks_.clear();
+  if (options_.max_num_tracks > 0 && tracks.size() > options_.max_num_tracks) {
+    LOG(INFO) << "Filtering tracks for Bundle Adjustment: " << tracks.size()
+              << " -> " << options_.max_num_tracks;
+    std::vector<std::pair<size_t, track_t>> track_lengths;
+    track_lengths.reserve(tracks.size());
+    for (const auto& [track_id, track] : tracks) {
+      track_lengths.emplace_back(track.observations.size(), track_id);
+    }
+    // Sort descending
+    std::partial_sort(track_lengths.begin(),
+                      track_lengths.begin() + options_.max_num_tracks,
+                      track_lengths.end(),
+                      std::greater<std::pair<size_t, track_t>>());
+    
+    for (int i = 0; i < options_.max_num_tracks; ++i) {
+      filtered_tracks_.insert(track_lengths[i].second);
+    }
+  } else {
+    for (const auto& [track_id, track] : tracks) {
+      filtered_tracks_.insert(track_id);
+    }
+  }
+
   // Reset the problem
   Reset();
 
@@ -118,10 +143,11 @@ void BundleAdjuster::AddPointToCameraConstraints(
     std::unordered_map<frame_t, Frame>& frames,
     std::unordered_map<image_t, Image>& images,
     std::unordered_map<track_t, Track>& tracks) {
-  for (auto& [track_id, track] : tracks) {
+  for (const auto& track_id : filtered_tracks_) {
+    auto& track = tracks.at(track_id);
     if (track.observations.size() < options_.min_num_view_per_track) continue;
 
-    for (const auto& observation : tracks[track_id].observations) {
+    for (const auto& observation : track.observations) {
       if (images.find(observation.first) == images.end()) continue;
 
       Image& image = images[observation.first];
@@ -202,7 +228,8 @@ void BundleAdjuster::AddCamerasAndPointsToParameterGroups(
   ceres::ParameterBlockOrdering* parameter_ordering =
       options_.solver_options.linear_solver_ordering.get();
   // Add point parameters to group 0.
-  for (auto& [track_id, track] : tracks) {
+  for (const auto& track_id : filtered_tracks_) {
+    auto& track = tracks.at(track_id);
     if (problem_->HasParameterBlock(track.xyz.data()))
       parameter_ordering->AddElementToGroup(track.xyz.data(), 0);
   }
@@ -308,7 +335,8 @@ void BundleAdjuster::ParameterizeVariables(
   }
 
   if (!options_.optimize_points) {
-    for (auto& [track_id, track] : tracks) {
+    for (const auto& track_id : filtered_tracks_) {
+      auto& track = tracks.at(track_id);
       if (problem_->HasParameterBlock(track.xyz.data())) {
         problem_->SetParameterBlockConstant(track.xyz.data());
       }

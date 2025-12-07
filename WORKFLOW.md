@@ -59,6 +59,12 @@ This document outlines the high-level pipeline of the GLOMAP-based Structure-fro
 *   **Action:**
     *   Takes pairwise relative rotations and solves a global optimization problem to find absolute rotations.
     *   Runs multiple times with filtering in between to remove bad edges from the view graph.
+*   **Checkpoint:** `checkpoint_rotation`
+    *   **Location:** `[output_path]/checkpoint_rotation/`
+    *   **Files:** `cameras.bin`, `images.bin`, `points3D.bin`
+    *   Saved after this phase completes.
+    *   Contains: Global rotations for all cameras.
+    *   Resume: If found, GLOMAP skips Phases 2-5 and loads these rotations directly.
 *   **Code Reference:**
     *   **Controller:** `glomap/controllers/rotation_averager.cc` (`SolveRotationAveraging`)
     *   **Estimator:** `glomap/estimators/global_rotation_averaging.cc`
@@ -69,6 +75,12 @@ This document outlines the high-level pipeline of the GLOMAP-based Structure-fro
     *   Aggregates pairwise matches from the database into a graph structure.
     *   Performs transitive closure (if A matches B, and B matches C, then A-B-C is a track).
     *   **Filtering:** Discards tracks that are too short or inconsistent.
+*   **Checkpoint:** `checkpoint_tracks`
+    *   **Location:** `[output_path]/checkpoint_tracks/`
+    *   **Files:** `cameras.bin`, `images.bin`, `points3D.bin`
+    *   Saved after this phase completes.
+    *   Contains: The full track graph (feature correspondences across multiple images).
+    *   Resume: If found, GLOMAP skips Phases 2-6.
 *   **Key Configuration:**
     *   `--TrackEstablishment.min_num_view_per_track 2`:  
         *   *Adjustment:* Lowered to 2 (default is often 3) to retain more data, especially in sparse areas or video sequences where overlap might be sequential.
@@ -87,8 +99,17 @@ This document outlines the high-level pipeline of the GLOMAP-based Structure-fro
         *   **Point-to-Camera Constraints:** Aligns observed feature directions with the vector from camera center to 3D point.
     *   **Initialization:** Randomly initializes camera positions before optimization to avoid local minima.
     *   **GPU Acceleration:** Heavily utilizes the GPU for solving large linear systems.
+*   **Checkpoint:** `checkpoint_gp`
+    *   **Location:** `[output_path]/checkpoint_gp/`
+    *   **Files:** `cameras.bin`, `images.bin`, `points3D.bin`
+    *   Saved after this phase completes.
+    *   Contains: Global positions (centers) and rotations for all cameras.
+    *   Resume: If found, GLOMAP skips Phases 2-7 and proceeds directly to Bundle Adjustment.
 *   **Key Configuration:**
     *   `--GlobalPositioning.use_gpu 1`: Enables CUDA acceleration.
+    *   `--GlobalPositioning.max_num_tracks 3000000`:
+        *   *New Feature:* Limits the number of tracks used in the solver to prevent 32-bit integer overflow (Jacobian size limit in Ceres).
+        *   *Logic:* Sorts tracks by length (visibility) and keeps the top N strongest tracks.
     *   `--Thresholds.max_angle_error 4.0`: 
         *   *Adjustment:* Relaxed from 2.0 to 4.0 degrees. Allows for more flexibility in the initial global alignment.
 *   **Code Reference:**
@@ -104,6 +125,9 @@ This document outlines the high-level pipeline of the GLOMAP-based Structure-fro
 *   **Key Configuration:**
     *   `--BundleAdjustment.optimize_rig_poses 1`: 
         *   *Note:* Only active if rig constraints are enabled. Allows the rig extrinsics to "flex" slightly during optimization.
+    *   `--BundleAdjustment.max_num_tracks 3000000`:
+        *   *New Feature:* Limits the number of tracks used in Bundle Adjustment to manage memory usage and prevent solver crashes.
+        *   *Logic:* Similar to Global Positioning, it prioritizes the most visible tracks.
 *   **Code Reference:**
     *   **Estimator:** `glomap/estimators/bundle_adjustment.cc` (`BundleAdjuster::Solve`)
 
@@ -139,6 +163,36 @@ This document outlines the high-level pipeline of the GLOMAP-based Structure-fro
 *   **Code Reference:**
     *   **Script:** `modules/phase_1/scripts/SFM/run_glomap_batch.sh` (Export section)
 
+## Output Directory Structure Reference
+The `[output_path]` (configured as `SPARSE_BASE_DIR/cluster_X`) will contain the following structure upon completion:
+
+```text
+[output_path]/
+├── cameras.bin                 # FINAL RECONSTRUCTION - Camera intrinsics
+├── images.bin                  # FINAL RECONSTRUCTION - Image poses (extrinsics)
+├── points3D.bin                # FINAL RECONSTRUCTION - 3D structure
+├── checkpoint_gp/              # Checkpoint: Global Positioning
+│   ├── cameras.bin
+│   ├── images.bin
+│   ├── points3D.bin
+│   └── view_graph.bin
+├── checkpoint_tracks/          # Checkpoint: Track Establishment
+│   ├── cameras.bin
+│   ├── images.bin
+│   ├── points3D.bin
+│   └── view_graph.bin
+├── checkpoint_rotation/        # Checkpoint: Rotation Averaging
+│   ├── cameras.bin
+│   ├── images.bin
+│   ├── points3D.bin
+│   └── view_graph.bin
+├── text/                       # Converted Text Output
+│   ├── cameras.txt
+│   ├── images.txt
+│   └── points3D.txt
+└── sparse_pointcloud.ply       # Visualization Point Cloud
+```
+
 ## Phase 12: Quality Analysis & Visualization
 *   **Goal:** Assess the quality of the reconstruction and generate visual aids.
 *   **Action:**
@@ -153,3 +207,19 @@ This document outlines the high-level pipeline of the GLOMAP-based Structure-fro
 *   **Code Reference:**
     *   **Analysis:** `modules/phase_1/scripts/analyze_reconstruction_quality.py`
     *   **Visualization:** `modules/phase_1/scripts/generate_filtered_camera_ply.py`
+
+## Memory Management & Large Scale Reconstruction
+For very large datasets (e.g., >10 million tracks), the standard pipeline may crash due to:
+1.  **Integer Overflow:** The Ceres Solver uses 32-bit integers for indexing the Jacobian matrix. If `num_residuals * num_parameter_blocks` exceeds $2^{31}-1$, it crashes.
+2.  **RAM Exhaustion:** Storing the full problem structure can consume hundreds of GBs of RAM.
+
+**Strategy:**
+*   **Track Establishment:** We allow a large number of tracks to be initially established (e.g., 10M+) to ensure we capture all potential geometry.
+*   **Solver Pruning:** We enforce strict limits (`max_num_tracks`) at the **Global Positioning** and **Bundle Adjustment** stages.
+    *   The system sorts all available tracks by their "strength" (number of observations).
+    *   It selects the top $N$ tracks (e.g., 3,000,000) to build the optimization problem.
+    *   This ensures the solver stays within safe limits while using the best available data.
+*   **Configuration:**
+    *   `MAX_TRACKS_GP`: Controls Global Positioning limit.
+    *   `MAX_TRACKS_BA`: Controls Bundle Adjustment limit.
+    *   These are configured in `run_glomap_batch.sh`.

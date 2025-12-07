@@ -88,12 +88,21 @@ int RunMapper(int argc, char** argv) {
   std::string checkpoint_tracks_path = output_path + "/checkpoint_tracks";
   std::string checkpoint_rotation_path = output_path + "/checkpoint_rotation";
 
-  if (colmap::ExistsDir(checkpoint_gp_path)) {
+  auto IsValidCheckpoint = [](const std::string& path) {
+    return colmap::ExistsDir(path) &&
+           (colmap::ExistsFile(path + "/cameras.bin") || colmap::ExistsFile(path + "/cameras.txt")) &&
+           (colmap::ExistsFile(path + "/images.bin") || colmap::ExistsFile(path + "/images.txt")) &&
+           (colmap::ExistsFile(path + "/points3D.bin") || colmap::ExistsFile(path + "/points3D.txt")) &&
+           colmap::ExistsFile(path + "/view_graph.bin");
+  };
+
+  if (IsValidCheckpoint(checkpoint_gp_path)) {
     LOG(INFO) << "Found checkpoint: " << checkpoint_gp_path;
     LOG(INFO) << "Resuming from Global Positioning...";
 
     colmap::Reconstruction recon;
-    recon.Read(checkpoint_gp_path + "/0");
+    recon.Read(checkpoint_gp_path);
+    ReadViewGraph(checkpoint_gp_path + "/view_graph.bin", view_graph);
     ConvertColmapToGlomap(recon, rigs, cameras, frames, images, tracks);
 
     options.mapper->skip_preprocessing = true;
@@ -103,32 +112,45 @@ int RunMapper(int argc, char** argv) {
     options.mapper->skip_track_establishment = true;
     options.mapper->skip_global_positioning = true;
 
-  } else if (colmap::ExistsDir(checkpoint_tracks_path)) {
-    LOG(INFO) << "Found checkpoint: " << checkpoint_tracks_path;
-    LOG(INFO) << "Resuming from Track Establishment...";
+  } else {
+    LOG(INFO) << "Checkpoint not found or incomplete: " << checkpoint_gp_path;
 
-    colmap::Reconstruction recon;
-    recon.Read(checkpoint_tracks_path + "/0");
-    ConvertColmapToGlomap(recon, rigs, cameras, frames, images, tracks);
+    if (IsValidCheckpoint(checkpoint_tracks_path)) {
+      LOG(INFO) << "Found checkpoint: " << checkpoint_tracks_path;
+      LOG(INFO) << "Resuming from Track Establishment...";
 
-    options.mapper->skip_preprocessing = true;
-    options.mapper->skip_view_graph_calibration = true;
-    options.mapper->skip_relative_pose_estimation = true;
-    options.mapper->skip_rotation_averaging = true;
-    options.mapper->skip_track_establishment = true;
+      colmap::Reconstruction recon;
+      recon.Read(checkpoint_tracks_path);
+      ReadViewGraph(checkpoint_tracks_path + "/view_graph.bin", view_graph);
+      ConvertColmapToGlomap(recon, rigs, cameras, frames, images, tracks);
 
-  } else if (colmap::ExistsDir(checkpoint_rotation_path)) {
-    LOG(INFO) << "Found checkpoint: " << checkpoint_rotation_path;
-    LOG(INFO) << "Resuming from Rotation Averaging...";
+      options.mapper->skip_preprocessing = true;
+      options.mapper->skip_view_graph_calibration = true;
+      options.mapper->skip_relative_pose_estimation = true;
+      options.mapper->skip_rotation_averaging = true;
+      options.mapper->skip_track_establishment = true;
 
-    colmap::Reconstruction recon;
-    recon.Read(checkpoint_rotation_path + "/0");
-    ConvertColmapToGlomap(recon, rigs, cameras, frames, images, tracks);
+    } else {
+      LOG(INFO) << "Checkpoint not found or incomplete: " << checkpoint_tracks_path;
 
-    options.mapper->skip_preprocessing = true;
-    options.mapper->skip_view_graph_calibration = true;
-    options.mapper->skip_relative_pose_estimation = true;
-    options.mapper->skip_rotation_averaging = true;
+      if (IsValidCheckpoint(checkpoint_rotation_path)) {
+        LOG(INFO) << "Found checkpoint: " << checkpoint_rotation_path;
+        LOG(INFO) << "Resuming from Rotation Averaging...";
+
+        colmap::Reconstruction recon;
+        recon.Read(checkpoint_rotation_path);
+        ReadViewGraph(checkpoint_rotation_path + "/view_graph.bin", view_graph);
+        ConvertColmapToGlomap(recon, rigs, cameras, frames, images, tracks);
+
+        options.mapper->skip_preprocessing = true;
+        options.mapper->skip_view_graph_calibration = true;
+        options.mapper->skip_relative_pose_estimation = true;
+        options.mapper->skip_rotation_averaging = true;
+      } else {
+        LOG(INFO) << "Checkpoint not found or incomplete: " << checkpoint_rotation_path;
+        LOG(INFO) << "No checkpoints found. Starting reconstruction from scratch.";
+      }
+    }
   }
 
   GlobalMapper global_mapper(*options.mapper);

@@ -17,7 +17,7 @@ void EstimateRelativePoses(ViewGraph& view_graph,
   }
 
   const int64_t num_image_pairs = valid_pair_ids.size();
-  const int64_t kNumChunks = 10;
+  const int64_t kNumChunks = 100;
   const int64_t interval =
       std::ceil(static_cast<double>(num_image_pairs) / kNumChunks);
 
@@ -25,7 +25,7 @@ void EstimateRelativePoses(ViewGraph& view_graph,
 
   LOG(INFO) << "Estimating relative pose for " << num_image_pairs << " pairs";
   for (int64_t chunk_id = 0; chunk_id < kNumChunks; chunk_id++) {
-    std::cout << "\r Estimating relative pose: " << chunk_id * kNumChunks << "%"
+    std::cout << "\r Estimating relative pose: " << (chunk_id * 100) / kNumChunks << "%"
               << std::flush;
     const int64_t start = chunk_id * interval;
     const int64_t end =
@@ -60,6 +60,9 @@ void EstimateRelativePoses(ViewGraph& view_graph,
         }
         // If the camera model is not supported by poselib
         if (!valid_camera_model) {
+          LOG_FIRST_N(WARNING, 1) << "Camera model not supported by PoseLib (slow path triggered). "
+                                  << "Camera1 Model: " << camera1.ModelName() 
+                                  << ", Camera2 Model: " << camera2.ModelName();
           // Undistort points
           // Note that here, we still rescale by the focal length (to avoid
           // change the RANSAC threshold)
