@@ -65,6 +65,10 @@ bool RetriangulateTracks(const TriangulatorOptions& options,
 
   const std::vector<image_t> reg_image_ids = reconstruction_ptr->RegImageIds();
 
+  std::cout << "Starting retriangulation with " << reg_image_ids.size() << " registered images." << std::endl;
+  size_t initial_num_points = reconstruction_ptr->NumPoints3D();
+  size_t initial_num_observations = reconstruction_ptr->ComputeNumObservations();
+
   size_t image_idx = 0;
   for (const image_t image_id : reg_image_ids) {
     std::cout << "\r Triangulating image " << image_idx++ + 1 << " / "
@@ -77,7 +81,8 @@ bool RetriangulateTracks(const TriangulatorOptions& options,
   std::cout << std::endl;
 
   // Merge and complete tracks.
-  mapper.CompleteAndMergeTracks(tri_options);
+  size_t num_merged = mapper.CompleteAndMergeTracks(tri_options);
+  std::cout << "Initial triangulation complete. Merged " << num_merged << " tracks." << std::endl;
 
   auto ba_options = options_colmap.GlobalBundleAdjustment();
   ba_options.refine_focal_length = false;
@@ -115,11 +120,25 @@ bool RetriangulateTracks(const TriangulatorOptions& options,
     num_changed_observations += mapper.FilterPoints(mapper_options);
     const double changed =
         static_cast<double>(num_changed_observations) / num_observations;
+    
+    std::cout << "BA Iteration " << i + 1 << ": Changed " << num_changed_observations 
+              << " observations (" << (changed * 100.0) << "%). Current points: " 
+              << reconstruction_ptr->NumPoints3D() << std::endl;
+
     if (changed < options_colmap.ba_global_max_refinement_change) {
       break;
     }
   }
   std::cout << std::endl;
+
+  size_t final_num_points = reconstruction_ptr->NumPoints3D();
+  size_t final_num_observations = reconstruction_ptr->ComputeNumObservations();
+  
+  std::cout << "Retriangulation Summary:" << std::endl;
+  std::cout << "  Points: " << initial_num_points << " -> " << final_num_points 
+            << " (+" << (final_num_points - initial_num_points) << ")" << std::endl;
+  std::cout << "  Observations: " << initial_num_observations << " -> " << final_num_observations 
+            << " (+" << (final_num_observations - initial_num_observations) << ")" << std::endl;
 
   // Add the removed images to the reconstruction
   for (const auto& image_id : image_ids_notconnected) {

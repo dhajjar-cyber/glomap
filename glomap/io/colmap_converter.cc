@@ -8,13 +8,38 @@
 
 namespace glomap {
 
-bool IsRigPair(const std::string& name1, const std::string& name2) {
+bool IsOverlappingRigPair(const std::string& name1, const std::string& name2) {
+    // First check if they are in the same frame (IsRigPair logic)
     static const std::regex frame_regex("f(\\d+)");
     std::smatch match1, match2;
-    if (std::regex_search(name1, match1, frame_regex) && 
-        std::regex_search(name2, match2, frame_regex)) {
-        return match1[1] == match2[1];
+    if (!std::regex_search(name1, match1, frame_regex) || 
+        !std::regex_search(name2, match2, frame_regex) ||
+        match1[1] != match2[1]) {
+        return false;
     }
+
+    // Now check for camera overlap based on R{r}C{c} pattern
+    static const std::regex cam_regex("R(\\d+)C(\\d+)");
+    std::smatch cam_match1, cam_match2;
+    
+    if (std::regex_search(name1, cam_match1, cam_regex) && 
+        std::regex_search(name2, cam_match2, cam_regex)) {
+        
+        int r1 = std::stoi(cam_match1[1]);
+        int c1 = std::stoi(cam_match1[2]);
+        int r2 = std::stoi(cam_match2[1]);
+        int c2 = std::stoi(cam_match2[2]);
+
+        // Same ring neighbors (assuming 8 cameras per ring)
+        if (r1 == r2) {
+            int diff = std::abs(c1 - c2);
+            if (diff == 1 || diff == 7) return true; 
+        }
+        
+        // Vertical overlap (same column, different ring)
+        if (c1 == c2 && r1 != r2) return true;
+    }
+    
     return false;
 }
 
@@ -386,8 +411,8 @@ void ConvertDatabaseToGlomap(const colmap::Database& database,
         two_view.config == colmap::TwoViewGeometry::WATERMARK ||
         two_view.config == colmap::TwoViewGeometry::MULTIPLE) {
       
-      if (IsRigPair(images.at(image_id1).file_name, images.at(image_id2).file_name)) {
-          LOG(WARNING) << "Rig Pair Rejected at Loading: " 
+      if (IsOverlappingRigPair(images.at(image_id1).file_name, images.at(image_id2).file_name)) {
+          LOG(WARNING) << "Rig Pair Rejected at Loading (EXPECTED OVERLAP): " 
                        << images.at(image_id1).file_name << " - " << images.at(image_id2).file_name
                        << " Config: " << two_view.config;
       }
@@ -395,6 +420,12 @@ void ConvertDatabaseToGlomap(const colmap::Database& database,
       image_pair.is_valid = false;
       invalid_count++;
       continue;
+    } else {
+      if (IsOverlappingRigPair(images.at(image_id1).file_name, images.at(image_id2).file_name)) {
+          LOG(INFO) << "Rig Pair Accepted at Loading (EXPECTED OVERLAP): " 
+                       << images.at(image_id1).file_name << " - " << images.at(image_id2).file_name
+                       << " Config: " << two_view.config;
+      }
     }
 
     // Collect the fundemental matrices

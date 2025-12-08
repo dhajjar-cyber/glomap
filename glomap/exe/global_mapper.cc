@@ -102,8 +102,8 @@ int RunMapper(int argc, char** argv) {
 
     colmap::Reconstruction recon;
     recon.Read(checkpoint_gp_path);
-    ReadViewGraph(checkpoint_gp_path + "/view_graph.bin", view_graph);
     ConvertColmapToGlomap(recon, rigs, cameras, frames, images, tracks);
+    ReadExtraData(checkpoint_gp_path + "/view_graph.bin", view_graph, frames);
 
     options.mapper->skip_preprocessing = true;
     options.mapper->skip_view_graph_calibration = true;
@@ -121,8 +121,8 @@ int RunMapper(int argc, char** argv) {
 
       colmap::Reconstruction recon;
       recon.Read(checkpoint_tracks_path);
-      ReadViewGraph(checkpoint_tracks_path + "/view_graph.bin", view_graph);
       ConvertColmapToGlomap(recon, rigs, cameras, frames, images, tracks);
+      ReadExtraData(checkpoint_tracks_path + "/view_graph.bin", view_graph, frames);
 
       options.mapper->skip_preprocessing = true;
       options.mapper->skip_view_graph_calibration = true;
@@ -139,8 +139,8 @@ int RunMapper(int argc, char** argv) {
 
         colmap::Reconstruction recon;
         recon.Read(checkpoint_rotation_path);
-        ReadViewGraph(checkpoint_rotation_path + "/view_graph.bin", view_graph);
         ConvertColmapToGlomap(recon, rigs, cameras, frames, images, tracks);
+        ReadExtraData(checkpoint_rotation_path + "/view_graph.bin", view_graph, frames);
 
         options.mapper->skip_preprocessing = true;
         options.mapper->skip_view_graph_calibration = true;

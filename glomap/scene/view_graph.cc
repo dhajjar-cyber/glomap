@@ -8,22 +8,37 @@ namespace glomap {
 
 int ViewGraph::KeepLargestConnectedComponents(
     std::unordered_map<frame_t, Frame>& frames,
-    std::unordered_map<image_t, Image>& images) {
+    std::unordered_map<image_t, Image>& images,
+    const std::string& stage_name) {
   EstablishAdjacencyList();
   EstablishAdjacencyListFrame(images);
 
   int num_comp = FindConnectedComponent();
 
-  int max_idx = -1;
-  int max_img = 0;
-  for (int comp = 0; comp < num_comp; comp++) {
-    if (connected_components[comp].size() > max_img) {
-      max_img = connected_components[comp].size();
-      max_idx = comp;
-    }
-  }
+  std::cout << "Connected Components Analysis [" << stage_name << "]:" << std::endl;
+  std::cout << "  Found " << num_comp << " connected components." << std::endl;
 
-  if (max_img == 0) return 0;
+  int max_idx = -1;
+  size_t max_frames = 0;
+  
+  std::vector<std::pair<size_t, int>> comp_sizes;
+  for (int comp = 0; comp < num_comp; comp++) {
+      comp_sizes.push_back({connected_components[comp].size(), comp});
+  }
+  std::sort(comp_sizes.rbegin(), comp_sizes.rend());
+
+  for (size_t i = 0; i < comp_sizes.size(); ++i) {
+      if (i < 10) {
+          std::cout << "  Component " << i << ": " << comp_sizes[i].first << " frames" << std::endl;
+      }
+      if (comp_sizes[i].first > max_frames) {
+          max_frames = comp_sizes[i].first;
+          max_idx = comp_sizes[i].second;
+      }
+  }
+  if (comp_sizes.size() > 10) std::cout << "  ... and " << (comp_sizes.size() - 10) << " smaller components." << std::endl;
+
+  if (max_frames == 0) return 0;
 
   std::unordered_set<image_t> largest_component = connected_components[max_idx];
 
@@ -45,10 +60,11 @@ int ViewGraph::KeepLargestConnectedComponents(
     if (image_pair.is_valid) num_pairs++;
   }
 
+  int num_kept_images = 0;
   for (auto& [image_id, image] : images) {
-    if (image.IsRegistered()) max_img++;
+    if (image.IsRegistered()) num_kept_images++;
   }
-  return max_img;
+  return num_kept_images;
 }
 
 int ViewGraph::FindConnectedComponent() {

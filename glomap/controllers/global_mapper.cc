@@ -74,7 +74,7 @@ bool GlobalMapper::Solve(const colmap::Database& database,
     RelPoseFilter::FilterInlierRatio(
         view_graph, images, options_.inlier_thresholds.min_inlier_ratio);
 
-    if (view_graph.KeepLargestConnectedComponents(frames, images) == 0) {
+    if (view_graph.KeepLargestConnectedComponents(frames, images, "Post-RelativePose") == 0) {
       LOG(ERROR) << "no connected components are found";
       return false;
     }
@@ -96,7 +96,7 @@ bool GlobalMapper::Solve(const colmap::Database& database,
 
     RelPoseFilter::FilterRotations(
         view_graph, images, options_.inlier_thresholds.max_rotation_error);
-    if (view_graph.KeepLargestConnectedComponents(frames, images) == 0) {
+    if (view_graph.KeepLargestConnectedComponents(frames, images, "Post-RotationAveraging-1") == 0) {
       LOG(ERROR) << "no connected components are found";
       return false;
     }
@@ -108,7 +108,7 @@ bool GlobalMapper::Solve(const colmap::Database& database,
     }
     RelPoseFilter::FilterRotations(
         view_graph, images, options_.inlier_thresholds.max_rotation_error);
-    image_t num_img = view_graph.KeepLargestConnectedComponents(frames, images);
+    image_t num_img = view_graph.KeepLargestConnectedComponents(frames, images, "Post-RotationAveraging-Final");
     if (num_img == 0) {
       LOG(ERROR) << "no connected components are found";
       return false;
@@ -122,7 +122,7 @@ bool GlobalMapper::Solve(const colmap::Database& database,
     LOG(INFO) << "Checkpointing after Rotation Averaging...";
     WriteGlomapReconstruction(options_.output_path + "/checkpoint_rotation", 
                               rigs, cameras, frames, images, tracks, "bin", "");
-    WriteViewGraph(options_.output_path + "/checkpoint_rotation/view_graph.bin", view_graph);
+    WriteExtraData(options_.output_path + "/checkpoint_rotation/view_graph.bin", view_graph, frames);
   }
 
   // 4. Track establishment and selection
@@ -148,7 +148,7 @@ bool GlobalMapper::Solve(const colmap::Database& database,
     LOG(INFO) << "Checkpointing after Track Establishment...";
     WriteGlomapReconstruction(options_.output_path + "/checkpoint_tracks", 
                               rigs, cameras, frames, images, tracks, "bin", "");
-    WriteViewGraph(options_.output_path + "/checkpoint_tracks/view_graph.bin", view_graph);
+    WriteExtraData(options_.output_path + "/checkpoint_tracks/view_graph.bin", view_graph, frames);
   }
 
   // 5. Global positioning
@@ -206,7 +206,7 @@ bool GlobalMapper::Solve(const colmap::Database& database,
     LOG(INFO) << "Checkpointing after Global Positioning...";
     WriteGlomapReconstruction(options_.output_path + "/checkpoint_gp", 
                               rigs, cameras, frames, images, tracks, "bin", "");
-    WriteViewGraph(options_.output_path + "/checkpoint_gp/view_graph.bin", view_graph);
+    WriteExtraData(options_.output_path + "/checkpoint_gp/view_graph.bin", view_graph, frames);
   }
 
   // 6. Bundle adjustment

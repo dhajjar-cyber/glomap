@@ -17,7 +17,8 @@ class ViewGraph {
   // Return: the number of images in the largest connected component
   int KeepLargestConnectedComponents(
       std::unordered_map<frame_t, Frame>& frames,
-      std::unordered_map<image_t, Image>& images);
+      std::unordered_map<image_t, Image>& images,
+      const std::string& stage_name = "");
 
   // Mark the cluster of the cameras (cluster_id sort by the the number of
   // images)

@@ -3,6 +3,42 @@
 
 This document outlines the high-level pipeline of the GLOMAP-based Structure-from-Motion (SfM) workflow used in this project. GLOMAP is a global SfM system that is generally faster and more robust than incremental SfM (like standard COLMAP) for large datasets, but it operates on a pre-existing database of features and matches.
 
+## Core Concepts: The Frame-Based Architecture
+GLOMAP differs from standard COLMAP in how it handles multi-camera systems. Understanding this is crucial for interpreting results and diagnostics.
+
+1.  **The RIG (Hardware Definition):** The physical blueprint of the camera setup (e.g., "Camera 1 is 10cm right of Camera 0").
+2.  **The FRAME (Temporal Snapshot):** A specific instance of the Rig at a specific timestamp.
+    *   **Crucial Logic:** GLOMAP groups all images captured at the same timestamp into a single `Frame` object.
+    *   **Connectivity:** The View Graph connects **Frames**, not just individual images. If *Camera A* in Frame 1 matches *Camera A* in Frame 2, the **entire Frame 1 is connected to Frame 2**.
+    *   **Implication:** This acts as a **"Soft Rig Constraint"**. Even if "Hard" rig constraints (fixed extrinsics) are disabled, cameras in the same frame are mathematically locked together in time. A camera with no matches (e.g., looking at the sky) is "carried along" by its siblings in the same frame, preventing it from being dropped.
+3.  **The IMAGE (Data):** The actual pixel data, which is a child of a Frame.
+
+## Rig Constraints: Implicit vs. Explicit
+GLOMAP offers two ways to handle multi-camera rigs. Understanding the difference is key to choosing the right configuration.
+
+### 1. Implicit Constraint (Default)
+*   **Mechanism:** The **Frame-Based Architecture** itself.
+*   **Behavior:** When images are grouped into a Frame, they are mathematically forced to move together as a rigid body because the solver only calculates the pose of the *Frame*, not the individual images.
+*   **Rig Extrinsics:** Treated as a **Hard Constant**. GLOMAP trusts your initial calibration 100% and will never change it.
+*   **Solver Logic:** "Move the whole rig to fit points."
+*   **Best For:** Perfect mechanical rigs, pre-calibrated data.
+
+### 2. Explicit Constraint (`USE_RIG_CONSTRAINTS=1`)
+*   **Mechanism:** Adds an optimization layer on top of the Frame structure.
+*   **Behavior:** Enables `--BundleAdjustment.optimize_rig_poses 1`.
+*   **Rig Extrinsics:** Converted from a constant into a **Variable Parameter**. During Bundle Adjustment (Phase 8), the system solves for 3D points and Frame poses, but *also* slightly adjusts the rotation and translation of the cameras within the rig to minimize error.
+*   **Solver Logic:** "Move the rig AND tweak camera positions to fit points."
+*   **Best For:** Rigs that might flex, or approximate calibrations.
+*   **Phase Affected:** Primarily **Phase 8 (Bundle Adjustment)**.
+
+### Summary Table
+
+| Feature | Implicit Constraint (Frame-Based) | Explicit Constraint (`USE_RIG_CONSTRAINTS=1`) |
+| :--- | :--- | :--- |
+| **Frame Pose** | Optimized | Optimized |
+| **Rig Extrinsics** | **Fixed** (Hard Constraint) | **Optimized** (Soft Constraint / Refined) |
+| **Solver Logic** | "Move the whole rig to fit points" | "Move the rig AND tweak camera positions to fit points" |
+
 ## Phase 1: Prerequisites & Input Preparation
 *   **Goal:** Ensure all necessary data structures are in place before launching the reconstruction.
 *   **Input:**
@@ -11,7 +47,8 @@ This document outlines the high-level pipeline of the GLOMAP-based Structure-fro
     *   **Source Images:** The raw image files.
 *   **Action:**
     *   **Validation:** Checks for the existence of the database, image directory, and cluster files.
-    *   **View Graph Construction:** The system loads the `database.db` and constructs the initial `ViewGraph` object by reading all images, keypoints, and pairwise matches. This graph serves as the foundation for all subsequent phases.
+    *   **Frame Grouping:** The loader groups images into `Frames` based on filenames or database metadata. This establishes the "Soft Rig Constraint" described above.
+    *   **View Graph Construction:** The system loads the `database.db` and constructs the initial `ViewGraph` object.
     *   **Rig Configuration (Optional):** If `USE_RIG_CONSTRAINTS=1`, the system expects the `rig_sensors` table in the database to be populated (via `configure_rig_from_reconstruction.sh`).
 *   **Code Reference:**
     *   **Script:** `modules/phase_1/scripts/SFM/run_glomap_batch.sh` (Input Validation section)
@@ -58,6 +95,9 @@ This document outlines the high-level pipeline of the GLOMAP-based Structure-fro
 *   **Goal:** Solve for the global orientation of every camera.
 *   **Action:**
     *   Takes pairwise relative rotations and solves a global optimization problem to find absolute rotations.
+    *   **Frame-Based Optimization:** The solver estimates the rotation of the **Frame** (`frame.RigFromWorld()`), not individual images.
+        *   *Soft Constraint:* All cameras in the same frame are forced to rotate together.
+        *   *Benefit:* A camera with weak connections is stabilized by the rotation of its frame-mates.
     *   Runs multiple times with filtering in between to remove bad edges from the view graph.
 *   **Checkpoint:** `checkpoint_rotation`
     *   **Location:** `[output_path]/checkpoint_rotation/`
@@ -94,11 +134,18 @@ This document outlines the high-level pipeline of the GLOMAP-based Structure-fro
 *   **Action:**
     *   Uses the computed global rotations and pairwise translations to solve for camera centers.
     *   **Optimization:** Uses **Ceres Solver** to perform a non-linear least squares optimization.
+    *   **Frame-Based Optimization:** Similar to Phase 5, the solver optimizes the **Frame Position** (`frame.RigFromWorld().translation`).
+        *   Individual camera positions are derived as `Frame_Position + Rotation * Rig_Offset`.
     *   **Technique:** Minimizes a cost function combining:
         *   **Camera-to-Camera Constraints:** `BATAPairwiseDirectionError` (Aligns global camera centers with pairwise relative translation directions).
         *   **Point-to-Camera Constraints:** Aligns observed feature directions with the vector from camera center to 3D point.
     *   **Initialization:** Randomly initializes camera positions before optimization to avoid local minima.
     *   **GPU Acceleration:** Heavily utilizes the GPU for solving large linear systems.
+    *   **Filtering & Data Flow:**
+        *   **Solver Set:** The solver uses a subset of high-quality tracks (e.g., top 500k) to determine poses.
+        *   **Working Set Filtering:** Once poses are found, the system applies geometric constraints (angle error, reprojection error) to the **Working Set** (all tracks established in Phase 6).
+        *   *Note:* This step does **not** go back to the full unfiltered dataset to find new tracks; it only filters the existing Working Set.
+        *   **Output:** The filtered **Working Set** is passed to Phase 8 for Bundle Adjustment.
 *   **Checkpoint:** `checkpoint_gp`
     *   **Location:** `[output_path]/checkpoint_gp/`
     *   **Files:** `cameras.bin`, `images.bin`, `points3D.bin`
@@ -107,7 +154,7 @@ This document outlines the high-level pipeline of the GLOMAP-based Structure-fro
     *   Resume: If found, GLOMAP skips Phases 2-7 and proceeds directly to Bundle Adjustment.
 *   **Key Configuration:**
     *   `--GlobalPositioning.use_gpu 1`: Enables CUDA acceleration.
-    *   `--GlobalPositioning.max_num_tracks 3000000`:
+    *   `--GlobalPositioning.max_num_tracks 500000`:
         *   *New Feature:* Limits the number of tracks used in the solver to prevent 32-bit integer overflow (Jacobian size limit in Ceres).
         *   *Logic:* Sorts tracks by length (visibility) and keeps the top N strongest tracks.
     *   `--Thresholds.max_angle_error 4.0`: 
@@ -120,6 +167,9 @@ This document outlines the high-level pipeline of the GLOMAP-based Structure-fro
 *   **Action:**
     *   Performs a global non-linear optimization on the entire reconstruction.
     *   **Optimization:** Uses **Ceres Solver** (specifically `SPARSE_SCHUR` linear solver).
+    *   **Frame-Based Optimization:** The primary parameter blocks are the **Frame Poses**.
+        *   If `optimize_rig_poses` is enabled, the solver *also* refines the `Rig_Offset` for each camera.
+        *   If disabled, `Rig_Offset` is treated as constant, but the cameras still move together via the Frame.
     *   **Technique:** Minimizes the reprojection error (difference between projected 3D points and observed 2D features).
     *   **Rig Constraints (Optional):** If `USE_RIG_CONSTRAINTS=1`, GLOMAP incorporates rig information from the database.
 *   **Key Configuration:**
