@@ -6,6 +6,8 @@
 #include <colmap/estimators/bundle_adjustment.h>
 #include <colmap/scene/database_cache.h>
 
+#include <glog/logging.h>
+#include <iomanip>
 #include <set>
 
 namespace glomap {
@@ -69,20 +71,82 @@ bool RetriangulateTracks(const TriangulatorOptions& options,
   size_t initial_num_points = reconstruction_ptr->NumPoints3D();
   size_t initial_num_observations = reconstruction_ptr->ComputeNumObservations();
 
+  // Suppress verbose COLMAP logs during the loop
+  const int previous_min_loglevel = FLAGS_minloglevel;
+  FLAGS_minloglevel = 2; // ERROR level only
+
   size_t image_idx = 0;
   for (const image_t image_id : reg_image_ids) {
-    std::cout << "\r Triangulating image " << image_idx++ + 1 << " / "
-              << reg_image_ids.size() << std::flush;
+    image_idx++;
+    if (image_idx % 10 == 0 || image_idx == reg_image_ids.size()) {
+        float progress = static_cast<float>(image_idx) / reg_image_ids.size() * 100.0f;
+        std::cout << "\r Triangulating images... " << std::fixed << std::setprecision(1) 
+                  << progress << "% (" << image_idx << "/" << reg_image_ids.size() << ")" << std::flush;
+    }
 
     const auto& image = reconstruction_ptr->Image(image_id);
 
     int num_tris = mapper.TriangulateImage(tri_options, image_id);
   }
+  
+  // Restore log level
+  FLAGS_minloglevel = previous_min_loglevel;
+  std::cout << std::endl;
   std::cout << std::endl;
 
   // Merge and complete tracks.
   size_t num_merged = mapper.CompleteAndMergeTracks(tri_options);
   std::cout << "Initial triangulation complete. Merged " << num_merged << " tracks." << std::endl;
+
+  // -------------------------------------------------------------------------
+  // HYBRID STRATEGY: Downsample points to avoid OOM
+  // -------------------------------------------------------------------------
+  if (options.max_num_tracks > 0 && reconstruction_ptr->NumPoints3D() > options.max_num_tracks) {
+    std::cout << "Downsampling points from " << reconstruction_ptr->NumPoints3D() 
+              << " to limit " << options.max_num_tracks << "..." << std::endl;
+
+    // Step 1: Hard Cut - Remove weak tracks (< 3 observations)
+    const size_t min_track_len = 3;
+    std::vector<colmap::point3D_t> points_to_delete;
+    for (const auto& point : reconstruction_ptr->Points3D()) {
+      if (point.second.track.Length() < min_track_len) {
+        points_to_delete.push_back(point.first);
+      }
+    }
+    for (const auto point3D_id : points_to_delete) {
+      reconstruction_ptr->DeletePoint3D(point3D_id);
+    }
+    std::cout << "  After removing weak tracks (<3 obs): " << reconstruction_ptr->NumPoints3D() << " points." << std::endl;
+
+    // Step 2: Top-N by Track Length
+    if (reconstruction_ptr->NumPoints3D() > options.max_num_tracks) {
+      std::cout << "  Still above limit. Sorting by track length..." << std::endl;
+      
+      // Store (length, point3D_id) pairs
+      std::vector<std::pair<size_t, colmap::point3D_t>> track_lengths;
+      track_lengths.reserve(reconstruction_ptr->NumPoints3D());
+      for (const auto& point : reconstruction_ptr->Points3D()) {
+        track_lengths.emplace_back(point.second.track.Length(), point.first);
+      }
+
+      // Sort descending (longest tracks first)
+      // Use partial_sort to find the top N elements we want to KEEP
+      // Actually, we want to find the elements to DELETE (the smallest ones)
+      // So let's sort ascending and keep the tail? Or sort descending and keep head?
+      // Let's sort descending.
+      std::sort(track_lengths.begin(), track_lengths.end(), 
+                [](const std::pair<size_t, colmap::point3D_t>& a, const std::pair<size_t, colmap::point3D_t>& b) {
+                  return a.first > b.first;
+                });
+
+      // Delete everything after the limit
+      for (size_t i = options.max_num_tracks; i < track_lengths.size(); ++i) {
+        reconstruction_ptr->DeletePoint3D(track_lengths[i].second);
+      }
+      std::cout << "  After Top-N filter: " << reconstruction_ptr->NumPoints3D() << " points." << std::endl;
+    }
+  }
+  // -------------------------------------------------------------------------
 
   auto ba_options = options_colmap.GlobalBundleAdjustment();
   ba_options.refine_focal_length = false;

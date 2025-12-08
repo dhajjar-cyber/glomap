@@ -143,6 +143,6 @@ void RelPoseFilter::FilterInlierRatio(ViewGraph& view_graph,
 
 //   LOG(INFO) << "Filtered " << num_invalid
 //             << " relative poses with inlier ratio < " << min_inlier_ratio;
-// }
+}
 
 }  // namespace glomap

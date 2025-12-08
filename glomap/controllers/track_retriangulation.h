@@ -13,6 +13,7 @@ struct TriangulatorOptions {
   double tri_min_angle = 1.0;
 
   int min_num_matches = 15;
+  int max_num_tracks = 3000000;
 };
 
 bool RetriangulateTracks(const TriangulatorOptions& options,

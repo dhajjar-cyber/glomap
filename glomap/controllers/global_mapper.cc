@@ -303,6 +303,12 @@ bool GlobalMapper::Solve(const colmap::Database& database,
     std::cout << "-------------------------------------" << std::endl;
     std::cout << "Running retriangulation ..." << std::endl;
     std::cout << "-------------------------------------" << std::endl;
+    
+    // Ensure consistency: Use the same max_tracks limit as Bundle Adjustment
+    options_.opt_triangulator.max_num_tracks = options_.opt_ba.max_num_tracks;
+    std::cout << "Setting Retriangulation max_num_tracks to match BA limit: " 
+              << options_.opt_triangulator.max_num_tracks << std::endl;
+
     for (int ite = 0; ite < options_.num_iteration_retriangulation; ite++) {
       colmap::Timer run_timer;
       run_timer.Start();

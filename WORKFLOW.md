@@ -144,7 +144,7 @@ GLOMAP offers two ways to handle multi-camera rigs. Understanding the difference
     *   **Filtering & Data Flow:**
         *   **Solver Set:** The solver uses a subset of high-quality tracks (e.g., top 500k) to determine poses.
         *   **Working Set Filtering:** Once poses are found, the system applies geometric constraints (angle error, reprojection error) to the **Working Set** (all tracks established in Phase 6).
-        *   *Note:* This step does **not** go back to the full unfiltered dataset to find new tracks; it only filters the existing Working Set.
+        *   *Crucial Distinction:* This step operates **only** on the Working Set (tracks created in Phase 6). It does **not** query the original `database.db` for new matches. It is purely a filtering operation to remove bad data from the existing set.
         *   **Output:** The filtered **Working Set** is passed to Phase 8 for Bundle Adjustment.
 *   **Checkpoint:** `checkpoint_gp`
     *   **Location:** `[output_path]/checkpoint_gp/`
@@ -184,13 +184,35 @@ GLOMAP offers two ways to handle multi-camera rigs. Understanding the difference
 ## Phase 9: Retriangulation
 *   **Goal:** Improve the density and accuracy of the 3D structure by re-triangulating points using the refined camera poses.
 *   **Action:**
-    *   Uses the refined camera poses from Phase 7 to identify new matches or improve existing ones.
-    *   Triangulates new 3D points that satisfy geometric consistency.
-    *   Followed by another round of Bundle Adjustment and filtering.
+    *   **1. Database Re-Query (The "Floodgates"):**
+        *   Unlike Phase 7 (which filters the Working Set), this phase **re-opens the original COLMAP database (`database.db`)**.
+        *   It loads **all geometrically verified matches** for any image pair with at least 15 matches (default).
+        *   *Contrast:* Previous phases filtered for "strong" tracks. This phase loads *everything* that passed the initial geometric verification.
+    *   **2. Exhaustive Triangulation:**
+        *   The system iterates through **every registered image** and **every 2D feature** within that image.
+        *   **The Check:** For each feature, it attempts to triangulate a 3D point using the now-fixed camera poses. A point is accepted ONLY if:
+            *   **Triangulation Angle:** The angle between rays is sufficient (e.g., > 0.3 degrees).
+            *   **Reprojection Error:** The 3D point projects back to the 2D image within a strict limit (e.g., 4.0 pixels).
+            *   **Positive Depth:** The point lies in front of the cameras.
+        *   **Outcome:**
+            *   **Accepted:** A new `Point3D` is created and added to the reconstruction structure.
+            *   **Rejected:** The feature is dropped and remains unused.
+    *   **3. Result & Expansion:**
+        *   Because this process tests *millions* of previously unused features against the trusted poses, the point count typically explodes (e.g., 1.8M -> 50M).
+    *   **4. Hybrid Downsampling (New):**
+        *   To prevent Out-Of-Memory (OOM) crashes during the subsequent Bundle Adjustment, we apply a **Hybrid Strategy** to reduce the point count back to a safe limit (e.g., 3M or 5M).
+        *   **Step 1 (Hard Cut):** Immediately drop any track with **< 3 observations**. These are the weakest and most numerous points.
+        *   **Step 2 (Top-N):** If the count is still above the limit, sort the remaining tracks by length (number of observations) and keep only the top $N$ strongest tracks.
+        *   *Goal:* Prioritize solver stability (long tracks) over raw density.
+    *   **5. Global Bundle Adjustment:**
+        *   This filtered structure (Cameras + Images + ~3M Points) is fed into a final Global Bundle Adjustment to refine the positions of the new points.
 *   **Key Configuration:**
     *   `--skip_retriangulation 0`: Ensures points are retriangulated for maximum density.
     *   `--Thresholds.min_triangulation_angle 0.3`: 
         *   *Adjustment:* Relaxed from 0.5 to 0.3 degrees.
+    *   `--Triangulation.max_num_tracks`:
+        *   *New Feature:* Controls the maximum number of points to keep after retriangulation.
+        *   *Auto-Sync:* This value is automatically set to match `--BundleAdjustment.max_num_tracks` (default 3,000,000) to ensure consistency.
 *   **Code Reference:**
     *   **Controller:** `glomap/controllers/track_retriangulation.cc` (`RetriangulateTracks`)
 
