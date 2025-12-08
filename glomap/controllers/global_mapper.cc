@@ -69,9 +69,10 @@ bool GlobalMapper::Solve(const colmap::Database& database,
     ImagePairsInlierCount(view_graph, cameras, images, inlier_thresholds, true);
 
     RelPoseFilter::FilterInlierNum(view_graph,
+                                   images,
                                    options_.inlier_thresholds.min_inlier_num);
     RelPoseFilter::FilterInlierRatio(
-        view_graph, options_.inlier_thresholds.min_inlier_ratio);
+        view_graph, images, options_.inlier_thresholds.min_inlier_ratio);
 
     if (view_graph.KeepLargestConnectedComponents(frames, images) == 0) {
       LOG(ERROR) << "no connected components are found";

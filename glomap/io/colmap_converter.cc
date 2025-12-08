@@ -4,7 +4,19 @@
 
 #include "colmap/scene/reconstruction_io_utils.h"
 
+#include <regex>
+
 namespace glomap {
+
+bool IsRigPair(const std::string& name1, const std::string& name2) {
+    static const std::regex frame_regex("f(\\d+)");
+    std::smatch match1, match2;
+    if (std::regex_search(name1, match1, frame_regex) && 
+        std::regex_search(name2, match2, frame_regex)) {
+        return match1[1] == match2[1];
+    }
+    return false;
+}
 
 void ConvertGlomapToColmapImage(const Image& image,
                                 colmap::Image& image_colmap,
@@ -373,6 +385,13 @@ void ConvertDatabaseToGlomap(const colmap::Database& database,
         two_view.config == colmap::TwoViewGeometry::DEGENERATE ||
         two_view.config == colmap::TwoViewGeometry::WATERMARK ||
         two_view.config == colmap::TwoViewGeometry::MULTIPLE) {
+      
+      if (IsRigPair(images.at(image_id1).file_name, images.at(image_id2).file_name)) {
+          LOG(WARNING) << "Rig Pair Rejected at Loading: " 
+                       << images.at(image_id1).file_name << " - " << images.at(image_id2).file_name
+                       << " Config: " << two_view.config;
+      }
+
       image_pair.is_valid = false;
       invalid_count++;
       continue;

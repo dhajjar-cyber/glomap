@@ -3,8 +3,19 @@
 #include <colmap/util/threading.h>
 
 #include <PoseLib/robust.h>
+#include <regex>
 
 namespace glomap {
+
+static bool IsRigPair(const std::string& name1, const std::string& name2) {
+    static const std::regex frame_regex("f(\\d+)");
+    std::smatch match1, match2;
+    if (std::regex_search(name1, match1, frame_regex) && 
+        std::regex_search(name2, match2, frame_regex)) {
+        return match1[1] == match2[1];
+    }
+    return false;
+}
 
 void EstimateRelativePoses(ViewGraph& view_graph,
                            std::unordered_map<camera_t, Camera>& cameras,
@@ -105,8 +116,21 @@ void EstimateRelativePoses(ViewGraph& view_graph,
                                           &inliers);
         } catch (const std::exception& e) {
           LOG(ERROR) << "Error in relative pose estimation: " << e.what();
+          if (IsRigPair(image1.file_name, image2.file_name)) {
+              LOG(WARNING) << "Rig Pair Failed at EstimateRelativePoses (Exception): " 
+                           << image1.file_name << " - " << image2.file_name << " Error: " << e.what();
+          }
           image_pair.is_valid = false;
           return;
+        }
+        
+        // Check if inliers are sufficient, though this is usually handled by filter later
+        // But if poselib returns 0 inliers, it might be an issue.
+        if (inliers.size() == 0) {
+             if (IsRigPair(image1.file_name, image2.file_name)) {
+                  LOG(WARNING) << "Rig Pair Failed at EstimateRelativePoses (0 inliers): " 
+                               << image1.file_name << " - " << image2.file_name;
+             }
         }
 
         // Convert the relative pose to the glomap format
