@@ -194,15 +194,16 @@ GLOMAP offers two ways to handle multi-camera rigs. Understanding the difference
 *   **Code Reference:**
     *   **Controller:** `glomap/controllers/track_retriangulation.cc` (`RetriangulateTracks`)
 
-## Phase 10: Reconstruction Pruning
+## Phase 10a: Reconstruction Pruning
 *   **Goal:** Remove low-quality data to ensure a clean clean final output.
 *   **Action:**
     *   Prunes weakly connected images and tracks that do not meet the quality criteria after all optimizations.
 *   **Code Reference:**
     *   **Processor:** `glomap/processors/reconstruction_pruning.cc`
 
-## Final Output Generation (Internal)
+## Phase 10b: Final Output Generation (Internal)
 *   **Goal:** Save the final reconstruction to disk with color information.
+*   **Context:** This is the final internal step of the GLOMAP executable before control returns to the `run_glomap_batch.sh` script.
 *   **Action:**
     *   The GLOMAP executable calls `WriteGlomapReconstruction` with the provided `image_path`.
     *   **Coloring:** Unlike intermediate checkpoints (which are saved without colors to save time), this final step reads the original images and assigns RGB colors to the 3D points.
