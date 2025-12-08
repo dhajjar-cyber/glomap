@@ -18,6 +18,12 @@ int ViewGraph::KeepLargestConnectedComponents(
   std::cout << "Connected Components Analysis [" << stage_name << "]:" << std::endl;
   std::cout << "  Found " << num_comp << " connected components." << std::endl;
 
+  // Pre-calculate images per frame
+  std::unordered_map<frame_t, int> images_per_frame;
+  for (const auto& [image_id, image] : images) {
+    images_per_frame[image.frame_id]++;
+  }
+
   int max_idx = -1;
   size_t max_frames = 0;
   
@@ -29,7 +35,23 @@ int ViewGraph::KeepLargestConnectedComponents(
 
   for (size_t i = 0; i < comp_sizes.size(); ++i) {
       if (i < 10) {
-          std::cout << "  Component " << i << ": " << comp_sizes[i].first << " frames" << std::endl;
+          int comp_idx = comp_sizes[i].second;
+          size_t num_images = 0;
+          std::unordered_set<rig_t> unique_rigs;
+          
+          for (auto frame_id : connected_components[comp_idx]) {
+              num_images += images_per_frame[frame_id];
+              if (frames[frame_id].HasRigId()) {
+                  unique_rigs.insert(frames[frame_id].RigId());
+              }
+          }
+
+          std::cout << "  Component " << i << ": " << comp_sizes[i].first << " frames, " 
+                    << num_images << " images";
+          if (!unique_rigs.empty()) {
+              std::cout << ", " << unique_rigs.size() << " rigs";
+          }
+          std::cout << std::endl;
       }
       if (comp_sizes[i].first > max_frames) {
           max_frames = comp_sizes[i].first;

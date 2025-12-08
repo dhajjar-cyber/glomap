@@ -59,24 +59,30 @@ void RelPoseFilter::FilterRotations(
 
     double angle = CalcAngle(pose_calc, image_pair.cam2_from_cam1);
     if (angle > max_angle) {
+      /*
       if (IsOverlappingRigPair(image1.file_name, image2.file_name)) {
           LOG(WARNING) << "Rig Pair Rejected at FilterRotations (EXPECTED OVERLAP): " 
                        << image1.file_name << " - " << image2.file_name
                        << " Angle Error: " << angle << " > " << max_angle;
       }
+      */
+
       image_pair.is_valid = false;
       num_invalid++;
     } else {
+      /*
       if (IsOverlappingRigPair(image1.file_name, image2.file_name)) {
           LOG(INFO) << "Rig Pair Accepted at FilterRotations (EXPECTED OVERLAP): " 
                        << image1.file_name << " - " << image2.file_name
                        << " Angle Error: " << angle << " <= " << max_angle;
       }
+      */
     }
   }
-
+  /*
   LOG(INFO) << "Filtered " << num_invalid << " relative rotation with angle > "
             << max_angle << " degrees";
+    */
 }
 
 void RelPoseFilter::FilterInlierNum(ViewGraph& view_graph, 
@@ -88,23 +94,25 @@ void RelPoseFilter::FilterInlierNum(ViewGraph& view_graph,
 
     if (image_pair.inliers.size() < min_inlier_num) {
       if (IsOverlappingRigPair(images.at(image_pair.image_id1).file_name, images.at(image_pair.image_id2).file_name)) {
-          LOG(WARNING) << "Rig Pair Rejected at FilterInlierNum (EXPECTED OVERLAP): " 
-                       << images.at(image_pair.image_id1).file_name << " - " << images.at(image_pair.image_id2).file_name
-                       << " Inliers: " << image_pair.inliers.size() << " < " << min_inlier_num;
-      }
+
+        // LOG(WARNING) << "Rig Pair Rejected at FilterInlierNum (EXPECTED OVERLAP): " 
+        //                << images.at(image_pair.image_id1).file_name << " - " << images.at(image_pair.image_id2).file_name
+        //                << " Inliers: " << image_pair.inliers.size() << " < " << min_inlier_num;
+
+                      }
       image_pair.is_valid = false;
       num_invalid++;
     } else {
       if (IsOverlappingRigPair(images.at(image_pair.image_id1).file_name, images.at(image_pair.image_id2).file_name)) {
-          LOG(INFO) << "Rig Pair Accepted at FilterInlierNum (EXPECTED OVERLAP): " 
-                       << images.at(image_pair.image_id1).file_name << " - " << images.at(image_pair.image_id2).file_name
-                       << " Inliers: " << image_pair.inliers.size() << " >= " << min_inlier_num;
+          // LOG(INFO) << "Rig Pair Accepted at FilterInlierNum (EXPECTED OVERLAP): " 
+          //              << images.at(image_pair.image_id1).file_name << " - " << images.at(image_pair.image_id2).file_name
+          //              << " Inliers: " << image_pair.inliers.size() << " >= " << min_inlier_num;
       }
     }
   }
 
-  LOG(INFO) << "Filtered " << num_invalid
-            << " relative poses with inlier number < " << min_inlier_num;
+  // LOG(INFO) << "Filtered " << num_invalid
+  //           << " relative poses with inlier number < " << min_inlier_num;
 }
 
 void RelPoseFilter::FilterInlierRatio(ViewGraph& view_graph,
@@ -118,23 +126,23 @@ void RelPoseFilter::FilterInlierRatio(ViewGraph& view_graph,
         image_pair.inliers.size() * 1.0 / image_pair.matches.rows();
     if (ratio < min_inlier_ratio) {
       if (IsOverlappingRigPair(images.at(image_pair.image_id1).file_name, images.at(image_pair.image_id2).file_name)) {
-          LOG(WARNING) << "Rig Pair Rejected at FilterInlierRatio (EXPECTED OVERLAP): " 
-                       << images.at(image_pair.image_id1).file_name << " - " << images.at(image_pair.image_id2).file_name
-                       << " Ratio: " << ratio << " < " << min_inlier_ratio;
+          // LOG(WARNING) << "Rig Pair Rejected at FilterInlierRatio (EXPECTED OVERLAP): " 
+          //              << images.at(image_pair.image_id1).file_name << " - " << images.at(image_pair.image_id2).file_name
+          //              << " Ratio: " << ratio << " < " << min_inlier_ratio;
       }
       image_pair.is_valid = false;
       num_invalid++;
     } else {
-      if (IsOverlappingRigPair(images.at(image_pair.image_id1).file_name, images.at(image_pair.image_id2).file_name)) {
-          LOG(INFO) << "Rig Pair Accepted at FilterInlierRatio (EXPECTED OVERLAP): " 
-                       << images.at(image_pair.image_id1).file_name << " - " << images.at(image_pair.image_id2).file_name
-                       << " Ratio: " << ratio << " >= " << min_inlier_ratio;
-      }
+      // if (IsOverlappingRigPair(images.at(image_pair.image_id1).file_name, images.at(image_pair.image_id2).file_name)) {
+      //     LOG(INFO) << "Rig Pair Accepted at FilterInlierRatio (EXPECTED OVERLAP): " 
+      //                  << images.at(image_pair.image_id1).file_name << " - " << images.at(image_pair.image_id2).file_name
+      //                  << " Ratio: " << ratio << " >= " << min_inlier_ratio;
+      // }
     }
   }
 
-  LOG(INFO) << "Filtered " << num_invalid
-            << " relative poses with inlier ratio < " << min_inlier_ratio;
-}
+//   LOG(INFO) << "Filtered " << num_invalid
+//             << " relative poses with inlier ratio < " << min_inlier_ratio;
+// }
 
 }  // namespace glomap
