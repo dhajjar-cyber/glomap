@@ -196,14 +196,19 @@ GLOMAP offers two ways to handle multi-camera rigs. Understanding the difference
 
 ## Phase 10a: Reconstruction Pruning
 *   **Goal:** Remove low-quality data to ensure a clean clean final output.
+*   **Configuration:** Controlled by the `--skip_pruning` flag.
+    *   **Default:** `1` (True/Disabled). By default, GLOMAP does *not* perform this final pruning step, relying instead on the filtering done during Bundle Adjustment.
+    *   **To Enable:** Set `--skip_pruning 0`.
 *   **Action:**
     *   Prunes weakly connected images and tracks that do not meet the quality criteria after all optimizations.
 *   **Code Reference:**
     *   **Processor:** `glomap/processors/reconstruction_pruning.cc`
+    *   **Controller:** `glomap/controllers/global_mapper.cc` (Step 8)
 
 ## Phase 10b: Final Output Generation (Internal)
 *   **Goal:** Save the final reconstruction to disk with color information.
 *   **Context:** This is the final internal step of the GLOMAP executable before control returns to the `run_glomap_batch.sh` script.
+*   **Execution:** This step is **always** executed at the end of the pipeline, regardless of configuration flags.
 *   **Action:**
     *   The GLOMAP executable calls `WriteGlomapReconstruction` with the provided `image_path`.
     *   **Coloring:** Unlike intermediate checkpoints (which are saved without colors to save time), this final step reads the original images and assigns RGB colors to the 3D points.
