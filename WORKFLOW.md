@@ -212,7 +212,7 @@ GLOMAP offers two ways to handle multi-camera rigs. Understanding the difference
 *   **Action:**
     *   The GLOMAP executable calls `WriteGlomapReconstruction` with the provided `image_path`.
     *   **Coloring:** Unlike intermediate checkpoints (which are saved without colors to save time), this final step reads the original images and assigns RGB colors to the 3D points.
-    *   **Result:** The `points3D.bin` file in the root output directory is fully colored.
+    *   **Result:** Writes the full COLMAP reconstruction (`cameras.bin`, `images.bin`, `points3D.bin`) to the root output directory. The `points3D.bin` file will be fully colored.
 *   **Code Reference:**
     *   **Executable:** `glomap/exe/global_mapper.cc`
     *   **IO:** `glomap/io/colmap_io.cc`
