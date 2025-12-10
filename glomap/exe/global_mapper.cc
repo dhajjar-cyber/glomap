@@ -84,6 +84,7 @@ int RunMapper(int argc, char** argv) {
   }
 
   // Resumption Logic
+  std::string checkpoint_ba_path = output_path + "/checkpoint_ba";
   std::string checkpoint_gp_path = output_path + "/checkpoint_gp";
   std::string checkpoint_tracks_path = output_path + "/checkpoint_tracks";
   std::string checkpoint_rotation_path = output_path + "/checkpoint_rotation";
@@ -96,7 +97,27 @@ int RunMapper(int argc, char** argv) {
            colmap::ExistsFile(path + "/view_graph.bin");
   };
 
-  if (IsValidCheckpoint(checkpoint_gp_path)) {
+  if (IsValidCheckpoint(checkpoint_ba_path)) {
+    LOG(INFO) << "Found checkpoint: " << checkpoint_ba_path;
+    LOG(INFO) << "Resuming from Bundle Adjustment...";
+
+    colmap::Reconstruction recon;
+    recon.Read(checkpoint_ba_path);
+    ConvertColmapToGlomap(recon, rigs, cameras, frames, images, tracks);
+    ReadExtraData(checkpoint_ba_path + "/view_graph.bin", view_graph, frames);
+
+    options.mapper->skip_preprocessing = true;
+    options.mapper->skip_view_graph_calibration = true;
+    options.mapper->skip_relative_pose_estimation = true;
+    options.mapper->skip_rotation_averaging = true;
+    options.mapper->skip_track_establishment = true;
+    options.mapper->skip_global_positioning = true;
+    options.mapper->skip_bundle_adjustment = true;
+
+  } else {
+    LOG(INFO) << "Checkpoint not found or incomplete: " << checkpoint_ba_path;
+
+    if (IsValidCheckpoint(checkpoint_gp_path)) {
     LOG(INFO) << "Found checkpoint: " << checkpoint_gp_path;
     LOG(INFO) << "Resuming from Global Positioning...";
 
@@ -151,6 +172,7 @@ int RunMapper(int argc, char** argv) {
         LOG(INFO) << "No checkpoints found. Starting reconstruction from scratch.";
       }
     }
+  }
   }
 
   GlobalMapper global_mapper(*options.mapper);

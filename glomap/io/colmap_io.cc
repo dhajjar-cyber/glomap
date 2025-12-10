@@ -27,7 +27,7 @@ void WriteGlomapReconstruction(
   if (largest_component_num == -1) {
     colmap::Reconstruction reconstruction;
     ConvertGlomapToColmap(
-        rigs, cameras, frames, images, tracks, reconstruction);
+        rigs, cameras, frames, images, tracks, reconstruction, -1, true);
     // Read in colors
     if (image_path != "") {
       LOG(INFO) << "Extracting colors ...";
@@ -47,7 +47,7 @@ void WriteGlomapReconstruction(
                 << largest_component_num + 1 << std::flush;
       colmap::Reconstruction reconstruction;
       ConvertGlomapToColmap(
-          rigs, cameras, frames, images, tracks, reconstruction, comp);
+          rigs, cameras, frames, images, tracks, reconstruction, comp, true);
       // Read in colors
       if (image_path != "") {
         reconstruction.ExtractColorsForAllImages(image_path);

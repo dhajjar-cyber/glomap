@@ -412,9 +412,9 @@ void ConvertDatabaseToGlomap(const colmap::Database& database,
         two_view.config == colmap::TwoViewGeometry::MULTIPLE) {
       
       if (IsOverlappingRigPair(images.at(image_id1).file_name, images.at(image_id2).file_name)) {
-          LOG(WARNING) << "Rig Pair Rejected at Loading (EXPECTED OVERLAP): " 
-                       << images.at(image_id1).file_name << " - " << images.at(image_id2).file_name
-                       << " Config: " << two_view.config;
+          // LOG(WARNING) << "Rig Pair Rejected at Loading (EXPECTED OVERLAP): " 
+          //              << images.at(image_id1).file_name << " - " << images.at(image_id2).file_name
+          //              << " Config: " << two_view.config;
       }
 
       image_pair.is_valid = false;
@@ -422,10 +422,10 @@ void ConvertDatabaseToGlomap(const colmap::Database& database,
       continue;
     } else {
       if (IsOverlappingRigPair(images.at(image_id1).file_name, images.at(image_id2).file_name)) {
-          LOG(INFO) << "Rig Pair Accepted at Loading (EXPECTED OVERLAP): " 
-                       << images.at(image_id1).file_name << " - " << images.at(image_id2).file_name
-                       << " Config: " << two_view.config;
-      }
+      //     LOG(INFO) << "Rig Pair Accepted at Loading (EXPECTED OVERLAP): " 
+      //                  << images.at(image_id1).file_name << " - " << images.at(image_id2).file_name
+      //                  << " Config: " << two_view.config;
+       }
     }
 
     // Collect the fundemental matrices
@@ -471,8 +471,8 @@ void ConvertDatabaseToGlomap(const colmap::Database& database,
   }
   std::cout << std::endl;
 
-  LOG(INFO) << "Pairs read done. " << invalid_count << " / "
-            << view_graph.image_pairs.size() << " are invalid";
+  // LOG(INFO) << "Pairs read done. " << invalid_count << " / "
+  //           << view_graph.image_pairs.size() << " are invalid";
 }
 
 void CreateOneRigPerCamera(const std::unordered_map<camera_t, Camera>& cameras,

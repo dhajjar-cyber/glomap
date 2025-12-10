@@ -172,6 +172,12 @@ GLOMAP offers two ways to handle multi-camera rigs. Understanding the difference
         *   If disabled, `Rig_Offset` is treated as constant, but the cameras still move together via the Frame.
     *   **Technique:** Minimizes the reprojection error (difference between projected 3D points and observed 2D features).
     *   **Rig Constraints (Optional):** If `USE_RIG_CONSTRAINTS=1`, GLOMAP incorporates rig information from the database.
+*   **Checkpoint:** `checkpoint_ba`
+    *   **Location:** `[output_path]/checkpoint_ba/`
+    *   **Files:** `cameras.bin`, `images.bin`, `points3D.bin`
+    *   Saved after this phase completes.
+    *   Contains: Refined 3D points and camera poses after global bundle adjustment.
+    *   Resume: If found, GLOMAP skips Phases 2-8 and proceeds to Retriangulation.
 *   **Key Configuration:**
     *   `--BundleAdjustment.optimize_rig_poses 1`: 
         *   *Note:* Only active if rig constraints are enabled. Allows the rig extrinsics to "flex" slightly during optimization.
@@ -260,6 +266,11 @@ The `[output_path]` (configured as `SPARSE_BASE_DIR/cluster_X`) will contain the
 ├── images.bin                  # FINAL RECONSTRUCTION - Image poses (extrinsics)
 ├── points3D.bin                # FINAL RECONSTRUCTION - 3D structure
 ├── checkpoint_gp/              # Checkpoint: Global Positioning
+│   ├── cameras.bin
+│   ├── images.bin
+│   ├── points3D.bin
+│   └── view_graph.bin
+├── checkpoint_ba/              # Checkpoint: Bundle Adjustment
 │   ├── cameras.bin
 │   ├── images.bin
 │   ├── points3D.bin

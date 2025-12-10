@@ -296,6 +296,12 @@ bool GlobalMapper::Solve(const colmap::Database& database,
         options_.inlier_thresholds.min_triangulation_angle);
 
     run_timer.PrintSeconds();
+
+    // Checkpoint after Bundle Adjustment
+    LOG(INFO) << "Checkpointing after Bundle Adjustment...";
+    WriteGlomapReconstruction(options_.output_path + "/checkpoint_ba", 
+                              rigs, cameras, frames, images, tracks, "bin", "");
+    WriteExtraData(options_.output_path + "/checkpoint_ba/view_graph.bin", view_graph, frames);
   }
 
   // 7. Retriangulation

@@ -58,8 +58,8 @@ bool RetriangulateTracks(const TriangulatorOptions& options,
   reconstruction_ptr->DeleteAllPoints2DAndPoints3D();
   reconstruction_ptr->TranscribeImageIdsToDatabase(database);
 
-  colmap::IncrementalMapper mapper(database_cache);
-  mapper.BeginReconstruction(reconstruction_ptr);
+  auto mapper = std::make_unique<colmap::IncrementalMapper>(database_cache);
+  mapper->BeginReconstruction(reconstruction_ptr);
 
   // Triangulate all images.
   const auto tri_options = options_colmap.Triangulation();
@@ -86,7 +86,7 @@ bool RetriangulateTracks(const TriangulatorOptions& options,
 
     const auto& image = reconstruction_ptr->Image(image_id);
 
-    int num_tris = mapper.TriangulateImage(tri_options, image_id);
+    int num_tris = mapper->TriangulateImage(tri_options, image_id);
   }
   
   // Restore log level
@@ -95,7 +95,7 @@ bool RetriangulateTracks(const TriangulatorOptions& options,
   std::cout << std::endl;
 
   // Merge and complete tracks.
-  size_t num_merged = mapper.CompleteAndMergeTracks(tri_options);
+  size_t num_merged = mapper->CompleteAndMergeTracks(tri_options);
   std::cout << "Initial triangulation complete. Merged " << num_merged << " tracks." << std::endl;
 
   // -------------------------------------------------------------------------
@@ -148,6 +148,10 @@ bool RetriangulateTracks(const TriangulatorOptions& options,
   }
   // -------------------------------------------------------------------------
 
+  // Re-initialize the mapper to sync the observation manager with the modified reconstruction
+  mapper = std::make_unique<colmap::IncrementalMapper>(database_cache);
+  mapper->BeginReconstruction(reconstruction_ptr);
+
   auto ba_options = options_colmap.GlobalBundleAdjustment();
   ba_options.refine_focal_length = false;
   ba_options.refine_principal_point = false;
@@ -180,8 +184,8 @@ bool RetriangulateTracks(const TriangulatorOptions& options,
     }
 
     size_t num_changed_observations = 0;
-    num_changed_observations += mapper.CompleteAndMergeTracks(tri_options);
-    num_changed_observations += mapper.FilterPoints(mapper_options);
+    num_changed_observations += mapper->CompleteAndMergeTracks(tri_options);
+    num_changed_observations += mapper->FilterPoints(mapper_options);
     const double changed =
         static_cast<double>(num_changed_observations) / num_observations;
     
