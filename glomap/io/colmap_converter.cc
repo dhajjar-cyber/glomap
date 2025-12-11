@@ -298,8 +298,11 @@ void ConvertDatabaseToGlomap(const colmap::Database& database,
 
   // Add the rigs
   std::vector<colmap::Rig> rigs_colmap = database.ReadAllRigs();
+  LOG(INFO) << "[RigLoader] Found " << rigs_colmap.size() << " rigs in database.";
   for (auto& rig : rigs_colmap) {
     rigs[rig.RigId()] = rig;
+    LOG(INFO) << "[RigLoader] Loaded Rig ID: " << rig.RigId() 
+              << " with " << rig.NonRefSensors().size() + 1 << " sensors.";
   }
 
   // Add the frames

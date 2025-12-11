@@ -168,13 +168,21 @@ void RotationEstimator::SetupLinearSystem(
 
   // First, we need to determine which cameras need to be estimated
   std::unordered_map<camera_t, Eigen::Vector3d> cam_from_rig_rotations;
+  LOG(INFO) << "[RotationEstimator] Determining camera estimation strategy (Rig vs Free)...";
+  
   for (auto& [camera_id, rig_id] : camera_id_to_rig_id) {
     sensor_t sensor_id(SensorType::CAMERA, camera_id);
-    if (rigs[rig_id].IsRefSensor(sensor_id)) continue;
+    if (rigs[rig_id].IsRefSensor(sensor_id)) {
+        LOG(INFO) << "[RotationEstimator] Camera " << camera_id << " is Reference Sensor for Rig " << rig_id << ". (Fixed)";
+        continue;
+    }
 
     auto cam_from_rig = rigs[rig_id].MaybeSensorFromRig(sensor_id);
     if (!cam_from_rig.has_value() ||
         cam_from_rig.value().translation.hasNaN()) {
+      
+      LOG(WARNING) << "[RotationEstimator] Camera " << camera_id << " (Rig " << rig_id << ") has NO valid rig extrinsics. Treating as FREE variable.";
+      
       if (camera_id_to_idx_.find(camera_id) == camera_id_to_idx_.end()) {
         camera_id_to_idx_[camera_id] = -1;
         if (cam_from_rig.has_value()) {
@@ -184,6 +192,8 @@ void RotationEstimator::SetupLinearSystem(
               Rigid3dToAngleAxis(cam_from_rig.value());
         }
       }
+    } else {
+        LOG(INFO) << "[RotationEstimator] Camera " << camera_id << " (Rig " << rig_id << ") has valid rig extrinsics. Using RIG CONSTRAINT.";
     }
   }
 
