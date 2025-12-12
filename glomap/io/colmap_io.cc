@@ -71,7 +71,7 @@ void ExtractColorsParallel(colmap::Reconstruction& reconstruction, const std::st
       const size_t count = color_counts[point3D_id];
       if (count > 0) {
           const Eigen::Vector3d color = color_sum / count;
-          reconstruction.Point3D(point3D_id).SetColor(
+          reconstruction.Point3D(point3D_id).color = Eigen::Vector3ub(
               static_cast<uint8_t>(color(0)),
               static_cast<uint8_t>(color(1)),
               static_cast<uint8_t>(color(2)));

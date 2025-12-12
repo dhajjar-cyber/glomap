@@ -116,17 +116,17 @@ bool BundleAdjuster::Solve(std::unordered_map<rig_t, Rig>& rigs,
   }
 #endif  // GLOMAP_CUDA_ENABLED
 
-  // Do not use the iterative solver, as it does not seem to be helpful
-  if (tracks.size() > 200000) {
-     LOG(INFO) << "Large problem detected (" << tracks.size() << " tracks). "
-               << "Switching to ITERATIVE_SCHUR + SCHUR_POWER_SERIES_EXPANSION to save memory.";
+  // Use iterative solver for large problems to avoid OOM
+  // Thresholds: >4000 images or >200k tracks (Expert recommendation)
+  if (images.size() > 4000 ) {
+     LOG(INFO) << "Large problem detected (" << images.size() << " images, " << tracks.size() << " tracks). "
+               << "Switching to ITERATIVE_SCHUR + SCHUR_JACOBI to save memory.";
      options_.solver_options.linear_solver_type = ceres::ITERATIVE_SCHUR;
-     options_.solver_options.preconditioner_type = ceres::SCHUR_POWER_SERIES_EXPANSION;
+     options_.solver_options.preconditioner_type = ceres::SCHUR_JACOBI;
      options_.solver_options.use_explicit_schur_complement = false;
-     options_.solver_options.use_spse_initialization = true;
   } else {
      options_.solver_options.linear_solver_type = ceres::SPARSE_SCHUR;
-     options_.solver_options.preconditioner_type = ceres::CLUSTER_TRIDIAGONAL;
+     // Preconditioner is ignored by SPARSE_SCHUR, so we don't set it.
   }
 
   options_.solver_options.minimizer_progress_to_stdout = VLOG_IS_ON(2);
