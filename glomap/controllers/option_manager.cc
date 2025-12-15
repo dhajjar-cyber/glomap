@@ -310,6 +310,7 @@ void OptionManager::Reset() {
   options_size_t_.clear();
   options_uint_.clear();
   options_long_.clear();
+  options_ulong_.clear();
 
   added_mapper_options_ = false;
   added_view_graph_calibration_options_ = false;
