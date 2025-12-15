@@ -3,6 +3,7 @@
 #include "glomap/estimators/optimization_base.h"
 #include "glomap/scene/types_sfm.h"
 #include "glomap/types.h"
+#include <unordered_set>
 
 namespace glomap {
 
@@ -32,9 +33,12 @@ struct GlobalPositionerOptions : public OptimizationBaseOptions {
   bool use_gpu = true;
   std::string gpu_index = "-1";
   int min_num_images_gpu_solver = 50;
+  bool force_non_iterative = false;
 
   // Constrain the minimum number of views per track
   int min_num_view_per_track = 3;
+  // Constrain the maximum number of tracks (prioritizing longest tracks)
+  int max_num_tracks = -1;
 
   // Random seed
   unsigned seed = 1;
@@ -130,6 +134,7 @@ class GlobalPositioner {
   std::vector<double> scales_;
 
   std::unordered_map<rig_t, double> rig_scales_;
+  std::unordered_set<track_t> filtered_tracks_;
 };
 
 }  // namespace glomap

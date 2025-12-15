@@ -49,6 +49,31 @@ bool GlobalPositioner::Solve(const ViewGraph& view_graph,
     return false;
   }
 
+  // Filter tracks
+  filtered_tracks_.clear();
+  if (options_.max_num_tracks > 0 && tracks.size() > options_.max_num_tracks) {
+    LOG(INFO) << "Filtering tracks for Global Positioning: " << tracks.size()
+              << " -> " << options_.max_num_tracks;
+    std::vector<std::pair<size_t, track_t>> track_lengths;
+    track_lengths.reserve(tracks.size());
+    for (const auto& [track_id, track] : tracks) {
+      track_lengths.emplace_back(track.observations.size(), track_id);
+    }
+    // Sort descending
+    std::partial_sort(track_lengths.begin(),
+                      track_lengths.begin() + options_.max_num_tracks,
+                      track_lengths.end(),
+                      std::greater<std::pair<size_t, track_t>>());
+    
+    for (int i = 0; i < options_.max_num_tracks; ++i) {
+      filtered_tracks_.insert(track_lengths[i].second);
+    }
+  } else {
+    for (const auto& [track_id, track] : tracks) {
+      filtered_tracks_.insert(track_id);
+    }
+  }
+
   LOG(INFO) << "Setting up the global positioner problem";
 
   // Setup the problem.
@@ -107,11 +132,11 @@ void GlobalPositioner::SetupProblem(
   scales_.clear();
   scales_.reserve(
       view_graph.image_pairs.size() +
-      std::accumulate(tracks.begin(),
-                      tracks.end(),
+      std::accumulate(filtered_tracks_.begin(),
+                      filtered_tracks_.end(),
                       0,
-                      [](int sum, const std::pair<track_t, Track>& track) {
-                        return sum + track.second.observations.size();
+                      [&tracks](int sum, const track_t track_id) {
+                        return sum + tracks.at(track_id).observations.size();
                       }));
 
   // Initialize the rig scales to be 1.0.
@@ -255,6 +280,7 @@ void GlobalPositioner::AddPointToCameraConstraints(
   }
 
   for (auto& [track_id, track] : tracks) {
+    if (filtered_tracks_.find(track_id) == filtered_tracks_.end()) continue;
     if (track.observations.size() < options_.min_num_view_per_track) continue;
 
     // Only set the points to be random if they are needed to be optimized
@@ -394,6 +420,7 @@ void GlobalPositioner::AddCamerasAndPointsToParameterGroups(
   int group_id = 1;
   if (tracks.size() > 0) {
     for (auto& [track_id, track] : tracks) {
+      if (filtered_tracks_.find(track_id) == filtered_tracks_.end()) continue;
       if (problem_->HasParameterBlock(track.xyz.data()))
         parameter_ordering->AddElementToGroup(track.xyz.data(), group_id);
     }
@@ -466,6 +493,7 @@ void GlobalPositioner::ParameterizeVariables(
   // If do not optimize the rotations, set the camera rotations to be constant
   if (!options_.optimize_points) {
     for (auto& [track_id, track] : tracks) {
+      if (filtered_tracks_.find(track_id) == filtered_tracks_.end()) continue;
       if (problem_->HasParameterBlock(track.xyz.data())) {
         problem_->SetParameterBlockConstant(track.xyz.data());
       }
@@ -538,6 +566,7 @@ void GlobalPositioner::ParameterizeVariables(
         colmap::CSVToVector<int>(options_.gpu_index);
     THROW_CHECK_GT(gpu_indices.size(), 0);
     colmap::SetBestCudaDevice(gpu_indices[0]);
+    LOG(INFO) << "Enabling CUDA solver support (cuDSS/CUDA_SPARSE).";
   }
 #else
   if (options_.use_gpu) {
@@ -551,8 +580,29 @@ void GlobalPositioner::ParameterizeVariables(
   // Set up the options for the solver
   // Do not use iterative solvers, for its suboptimal performance.
   if (tracks.size() > 0) {
-    options_.solver_options.linear_solver_type = ceres::SPARSE_SCHUR;
-    options_.solver_options.preconditioner_type = ceres::CLUSTER_TRIDIAGONAL;
+    // For very large problems, SPARSE_SCHUR consumes too much memory (O(N^2)).
+    // Switch to ITERATIVE_SCHUR with the memory-efficient Power Series preconditioner.
+    if (tracks.size() > 200000 && !options_.force_non_iterative) {
+       LOG(INFO) << "Large problem detected (" << tracks.size() << " tracks). "
+                 << "Switching to ITERATIVE_SCHUR + SCHUR_POWER_SERIES_EXPANSION to save memory.";
+       options_.solver_options.linear_solver_type = ceres::ITERATIVE_SCHUR;
+       options_.solver_options.preconditioner_type = ceres::SCHUR_POWER_SERIES_EXPANSION;
+       options_.solver_options.use_explicit_schur_complement = false;
+       options_.solver_options.use_spse_initialization = true;
+    } else {
+       if (options_.force_non_iterative && tracks.size() > 200000) {
+           LOG(INFO) << "Large problem detected (" << tracks.size() << " tracks), but force_non_iterative is enabled. "
+                     << "Using configured solver (likely SPARSE_SCHUR).";
+       }
+       options_.solver_options.linear_solver_type = ceres::SPARSE_SCHUR;
+       options_.solver_options.preconditioner_type = ceres::CLUSTER_TRIDIAGONAL;
+       
+       if (cuda_solver_enabled) {
+            LOG(INFO) << "Using SPARSE_SCHUR with CUDA_SPARSE backend.";
+       } else {
+            LOG(INFO) << "Using SPARSE_SCHUR with CPU backend (SuiteSparse/Eigen).";
+       }
+    }
   } else {
     options_.solver_options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
     options_.solver_options.preconditioner_type = ceres::JACOBI;

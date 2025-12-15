@@ -22,9 +22,12 @@ struct BundleAdjusterOptions : public OptimizationBaseOptions {
   bool use_gpu = true;
   std::string gpu_index = "-1";
   int min_num_images_gpu_solver = 50;
+  bool force_non_iterative = false;
 
   // Constrain the minimum number of views per track
   int min_num_view_per_track = 3;
+  // Constrain the maximum number of tracks (prioritizing longest tracks)
+  int max_num_tracks = -1;
 
   BundleAdjusterOptions() : OptimizationBaseOptions() {
     thres_loss_function = 1.;

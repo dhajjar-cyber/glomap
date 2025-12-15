@@ -197,6 +197,12 @@ void OptionManager::AddGlobalPositionerOptions() {
   AddAndRegisterDefaultOption(
       "GlobalPositioning.max_num_iterations",
       &mapper->opt_gp.solver_options.max_num_iterations);
+  AddAndRegisterDefaultOption(
+      "GlobalPositioning.max_num_tracks",
+      &mapper->opt_gp.max_num_tracks);
+  AddAndRegisterDefaultOption(
+      "GlobalPositioning.force_non_iterative",
+      &mapper->opt_gp.force_non_iterative);
 
   // TODO: move the constrain type selection here
 }
@@ -226,6 +232,12 @@ void OptionManager::AddBundleAdjusterOptions() {
   AddAndRegisterDefaultOption(
       "BundleAdjustment.max_num_iterations",
       &mapper->opt_ba.solver_options.max_num_iterations);
+  AddAndRegisterDefaultOption(
+      "BundleAdjustment.max_num_tracks",
+      &mapper->opt_ba.max_num_tracks);
+  AddAndRegisterDefaultOption(
+      "BundleAdjustment.force_non_iterative",
+      &mapper->opt_ba.force_non_iterative);
 }
 void OptionManager::AddTriangulatorOptions() {
   if (added_triangulation_options_) {

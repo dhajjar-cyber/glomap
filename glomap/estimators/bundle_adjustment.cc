@@ -81,6 +81,7 @@ bool BundleAdjuster::Solve(std::unordered_map<rig_t, Rig>& rigs,
         colmap::CSVToVector<int>(options_.gpu_index);
     THROW_CHECK_GT(gpu_indices.size(), 0);
     colmap::SetBestCudaDevice(gpu_indices[0]);
+    LOG(INFO) << "Enabling CUDA solver support (cuDSS/CUDA_SPARSE).";
   }
 #else
   if (options_.use_gpu) {
@@ -91,9 +92,28 @@ bool BundleAdjuster::Solve(std::unordered_map<rig_t, Rig>& rigs,
   }
 #endif  // GLOMAP_CUDA_ENABLED
 
-  // Do not use the iterative solver, as it does not seem to be helpful
-  options_.solver_options.linear_solver_type = ceres::SPARSE_SCHUR;
-  options_.solver_options.preconditioner_type = ceres::CLUSTER_TRIDIAGONAL;
+  // Use iterative solver for large problems to avoid OOM
+  // Thresholds: >4000 images or >200k tracks (Expert recommendation)
+  if ((images.size() > 4000) && !options_.force_non_iterative) {
+     LOG(INFO) << "Large problem detected (" << images.size() << " images, " << tracks.size() << " tracks). "
+               << "Switching to ITERATIVE_SCHUR + SCHUR_JACOBI to save memory.";
+     options_.solver_options.linear_solver_type = ceres::ITERATIVE_SCHUR;
+     options_.solver_options.preconditioner_type = ceres::SCHUR_JACOBI;
+     options_.solver_options.use_explicit_schur_complement = false;
+  } else {
+     if (options_.force_non_iterative && (images.size() > 4000)) {
+         LOG(INFO) << "Large problem detected (" << images.size() << " images), but force_non_iterative is enabled. "
+                   << "Using configured solver (likely SPARSE_SCHUR).";
+     }
+     options_.solver_options.linear_solver_type = ceres::SPARSE_SCHUR;
+     options_.solver_options.preconditioner_type = ceres::CLUSTER_TRIDIAGONAL;
+
+     if (cuda_solver_enabled) {
+        LOG(INFO) << "Using SPARSE_SCHUR with CUDA_SPARSE backend.";
+     } else {
+        LOG(INFO) << "Using SPARSE_SCHUR with CPU backend (SuiteSparse/Eigen).";
+     }
+  }
 
   options_.solver_options.minimizer_progress_to_stdout = VLOG_IS_ON(2);
   ceres::Solve(options_.solver_options, problem_.get(), &summary);
