@@ -20,4 +20,12 @@ void WriteColmapReconstruction(const std::string& reconstruction_path,
                                const colmap::Reconstruction& reconstruction,
                                const std::string output_format = "bin");
 
+void WriteExtraData(const std::string& path,
+                    const ViewGraph& view_graph,
+                    const std::unordered_map<frame_t, Frame>& frames);
+
+bool ReadExtraData(const std::string& path,
+                   ViewGraph& view_graph,
+                   std::unordered_map<frame_t, Frame>& frames);
+
 }  // namespace glomap

@@ -1,10 +1,12 @@
 #include "glomap/controllers/global_mapper.h"
 
 #include "glomap/controllers/option_manager.h"
+#include "glomap/io/colmap_converter.h"
 #include "glomap/io/colmap_io.h"
 #include "glomap/io/pose_io.h"
 #include "glomap/types.h"
 
+#include <colmap/scene/reconstruction.h>
 #include <colmap/util/file.h>
 #include <colmap/util/misc.h>
 #include <colmap/util/timer.h>
@@ -35,6 +37,9 @@ int RunMapper(int argc, char** argv) {
   options.AddGlobalMapperFullOptions();
 
   options.Parse(argc, argv);
+
+  // Pass output path to mapper options for checkpointing
+  options.mapper->output_path = output_path;
 
   if (!colmap::ExistsFile(database_path)) {
     LOG(ERROR) << "`database_path` is not a file";
@@ -78,6 +83,85 @@ int RunMapper(int argc, char** argv) {
   if (view_graph.image_pairs.empty()) {
     LOG(ERROR) << "Can't continue without image pairs";
     return EXIT_FAILURE;
+  }
+
+  // Resumption Logic
+  std::string checkpoint_ba_path = output_path + "/checkpoint_ba";
+  std::string checkpoint_gp_path = output_path + "/checkpoint_gp";
+  std::string checkpoint_tracks_path = output_path + "/checkpoint_tracks";
+  std::string checkpoint_rotation_path = output_path + "/checkpoint_rotation";
+
+  auto IsValidCheckpoint = [](const std::string& path) {
+    return colmap::ExistsDir(path) &&
+           (colmap::ExistsFile(path + "/cameras.bin") || colmap::ExistsFile(path + "/cameras.txt")) &&
+           (colmap::ExistsFile(path + "/images.bin") || colmap::ExistsFile(path + "/images.txt")) &&
+           (colmap::ExistsFile(path + "/points3D.bin") || colmap::ExistsFile(path + "/points3D.txt")) &&
+           colmap::ExistsFile(path + "/view_graph.bin");
+  };
+
+  if (IsValidCheckpoint(checkpoint_ba_path)) {
+    LOG(INFO) << "Found checkpoint: " << checkpoint_ba_path;
+    LOG(INFO) << "Resuming from Bundle Adjustment...";
+
+    colmap::Reconstruction recon;
+    recon.Read(checkpoint_ba_path);
+    ConvertColmapToGlomap(recon, rigs, cameras, frames, images, tracks);
+    ReadExtraData(checkpoint_ba_path + "/view_graph.bin", view_graph, frames);
+
+    options.mapper->skip_preprocessing = true;
+    options.mapper->skip_view_graph_calibration = true;
+    options.mapper->skip_relative_pose_estimation = true;
+    options.mapper->skip_rotation_averaging = true;
+    options.mapper->skip_track_establishment = true;
+    options.mapper->skip_global_positioning = true;
+    options.mapper->skip_bundle_adjustment = true;
+
+  } else if (IsValidCheckpoint(checkpoint_gp_path)) {
+    LOG(INFO) << "Found checkpoint: " << checkpoint_gp_path;
+    LOG(INFO) << "Resuming from Global Positioning...";
+
+    colmap::Reconstruction recon;
+    recon.Read(checkpoint_gp_path);
+    ConvertColmapToGlomap(recon, rigs, cameras, frames, images, tracks);
+    ReadExtraData(checkpoint_gp_path + "/view_graph.bin", view_graph, frames);
+
+    options.mapper->skip_preprocessing = true;
+    options.mapper->skip_view_graph_calibration = true;
+    options.mapper->skip_relative_pose_estimation = true;
+    options.mapper->skip_rotation_averaging = true;
+    options.mapper->skip_track_establishment = true;
+    options.mapper->skip_global_positioning = true;
+
+  } else if (IsValidCheckpoint(checkpoint_tracks_path)) {
+    LOG(INFO) << "Found checkpoint: " << checkpoint_tracks_path;
+    LOG(INFO) << "Resuming from Track Establishment...";
+
+    colmap::Reconstruction recon;
+    recon.Read(checkpoint_tracks_path);
+    ConvertColmapToGlomap(recon, rigs, cameras, frames, images, tracks);
+    ReadExtraData(checkpoint_tracks_path + "/view_graph.bin", view_graph, frames);
+
+    options.mapper->skip_preprocessing = true;
+    options.mapper->skip_view_graph_calibration = true;
+    options.mapper->skip_relative_pose_estimation = true;
+    options.mapper->skip_rotation_averaging = true;
+    options.mapper->skip_track_establishment = true;
+
+  } else if (IsValidCheckpoint(checkpoint_rotation_path)) {
+    LOG(INFO) << "Found checkpoint: " << checkpoint_rotation_path;
+    LOG(INFO) << "Resuming from Rotation Averaging...";
+
+    colmap::Reconstruction recon;
+    recon.Read(checkpoint_rotation_path);
+    ConvertColmapToGlomap(recon, rigs, cameras, frames, images, tracks);
+    ReadExtraData(checkpoint_rotation_path + "/view_graph.bin", view_graph, frames);
+
+    options.mapper->skip_preprocessing = true;
+    options.mapper->skip_view_graph_calibration = true;
+    options.mapper->skip_relative_pose_estimation = true;
+    options.mapper->skip_rotation_averaging = true;
+  } else {
+    LOG(INFO) << "No checkpoints found. Starting reconstruction from scratch.";
   }
 
   GlobalMapper global_mapper(*options.mapper);

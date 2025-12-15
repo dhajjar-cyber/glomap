@@ -2,6 +2,7 @@
 
 #include "glomap/controllers/rotation_averager.h"
 #include "glomap/io/colmap_converter.h"
+#include "glomap/io/colmap_io.h"
 #include "glomap/processors/image_pair_inliers.h"
 #include "glomap/processors/image_undistorter.h"
 #include "glomap/processors/reconstruction_normalizer.h"
@@ -114,6 +115,14 @@ bool GlobalMapper::Solve(const colmap::Database& database,
               << " images are within the connected component." << std::endl;
 
     run_timer.PrintSeconds();
+
+    // Checkpoint after Rotation Averaging
+    if (!options_.output_path.empty()) {
+      LOG(INFO) << "Checkpointing after Rotation Averaging...";
+      WriteGlomapReconstruction(options_.output_path + "/checkpoint_rotation",
+                                rigs, cameras, frames, images, tracks, "bin", "");
+      WriteExtraData(options_.output_path + "/checkpoint_rotation/view_graph.bin", view_graph, frames);
+    }
   }
 
   // 4. Track establishment and selection
@@ -134,6 +143,14 @@ bool GlobalMapper::Solve(const colmap::Database& database,
               << ", after filtering: " << num_tracks << std::endl;
 
     run_timer.PrintSeconds();
+
+    // Checkpoint after Track Establishment
+    if (!options_.output_path.empty()) {
+      LOG(INFO) << "Checkpointing after Track Establishment...";
+      WriteGlomapReconstruction(options_.output_path + "/checkpoint_tracks",
+                                rigs, cameras, frames, images, tracks, "bin", "");
+      WriteExtraData(options_.output_path + "/checkpoint_tracks/view_graph.bin", view_graph, frames);
+    }
   }
 
   // 5. Global positioning
@@ -186,6 +203,14 @@ bool GlobalMapper::Solve(const colmap::Database& database,
     NormalizeReconstruction(rigs, cameras, frames, images, tracks);
 
     run_timer.PrintSeconds();
+
+    // Checkpoint after Global Positioning
+    if (!options_.output_path.empty()) {
+      LOG(INFO) << "Checkpointing after Global Positioning...";
+      WriteGlomapReconstruction(options_.output_path + "/checkpoint_gp",
+                                rigs, cameras, frames, images, tracks, "bin", "");
+      WriteExtraData(options_.output_path + "/checkpoint_gp/view_graph.bin", view_graph, frames);
+    }
   }
 
   // 6. Bundle adjustment
@@ -275,6 +300,14 @@ bool GlobalMapper::Solve(const colmap::Database& database,
         options_.inlier_thresholds.min_triangulation_angle);
 
     run_timer.PrintSeconds();
+
+    // Checkpoint after Bundle Adjustment
+    if (!options_.output_path.empty()) {
+      LOG(INFO) << "Checkpointing after Bundle Adjustment...";
+      WriteGlomapReconstruction(options_.output_path + "/checkpoint_ba",
+                                rigs, cameras, frames, images, tracks, "bin", "");
+      WriteExtraData(options_.output_path + "/checkpoint_ba/view_graph.bin", view_graph, frames);
+    }
   }
 
   // 7. Retriangulation
