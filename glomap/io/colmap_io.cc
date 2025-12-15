@@ -1,11 +1,81 @@
 #include "glomap/io/colmap_io.h"
 
+#include <colmap/sensor/bitmap.h>
 #include <colmap/util/file.h>
 #include <colmap/util/misc.h>
+#include <colmap/util/threading.h>
 #include <fstream>
+#include <mutex>
 #include <unordered_set>
 
 namespace glomap {
+
+void ExtractColorsParallel(colmap::Reconstruction& reconstruction, const std::string& path) {
+  std::unordered_map<colmap::point3D_t, Eigen::Vector3d> color_sums;
+  std::unordered_map<colmap::point3D_t, size_t> color_counts;
+  std::mutex color_mutex;
+
+  const auto image_ids = reconstruction.RegImageIds();
+  colmap::ThreadPool thread_pool; // Defaults to std::thread::hardware_concurrency()
+  LOG(INFO) << "Extracting colors in parallel using " << std::thread::hardware_concurrency() << " threads...";
+  for (const auto& image_id : image_ids) {
+    thread_pool.AddTask([&, image_id]() {
+      const auto& image = reconstruction.Image(image_id);
+      const std::string image_path = colmap::JoinPaths(path, image.Name());
+      colmap::Bitmap bitmap;
+      if (!bitmap.Read(image_path)) {
+        LOG(WARNING) << "Could not read image " << image.Name() << " at path "
+                     << image_path;
+        return;
+      }
+
+      // Local accumulation to minimize locking
+      std::vector<std::pair<colmap::point3D_t, colmap::BitmapColor<float>>> local_colors;
+      local_colors.reserve(image.NumPoints2D());
+
+      for (const auto& point2D : image.Points2D()) {
+        if (point2D.HasPoint3D()) {
+          colmap::BitmapColor<float> color;
+          // COLMAP assumes that the upper left pixel center is (0.5, 0.5).
+          if (bitmap.InterpolateBilinear(
+                  point2D.xy(0) - 0.5, point2D.xy(1) - 0.5, &color)) {
+            local_colors.emplace_back(point2D.point3D_id, color);
+          }
+        }
+      }
+
+      // Batch update global map
+      if (!local_colors.empty()) {
+        std::lock_guard<std::mutex> lock(color_mutex);
+        for (const auto& [point3D_id, color] : local_colors) {
+          if (color_sums.count(point3D_id)) {
+            Eigen::Vector3d& color_sum = color_sums[point3D_id];
+            color_sum(0) += color.r;
+            color_sum(1) += color.g;
+            color_sum(2) += color.b;
+            color_counts[point3D_id] += 1;
+          } else {
+            color_sums.emplace(point3D_id, Eigen::Vector3d(color.r, color.g, color.b));
+            color_counts.emplace(point3D_id, 1);
+          }
+        }
+      }
+    });
+  }
+  thread_pool.Wait();
+
+  // Apply colors to reconstruction
+  for (auto& [point3D_id, color_sum] : color_sums) {
+    const size_t count = color_counts[point3D_id];
+    if (count > 0) {
+      const Eigen::Vector3d color = color_sum / count;
+      reconstruction.Point3D(point3D_id).color = Eigen::Vector3ub(
+          static_cast<uint8_t>(color(0)),
+          static_cast<uint8_t>(color(1)),
+          static_cast<uint8_t>(color(2)));
+    }
+  }
+}
 
 void WriteGlomapReconstruction(
     const std::string& reconstruction_path,
@@ -49,7 +119,7 @@ void WriteGlomapReconstruction(
       LOG(INFO) << "Extracting colors for " << reconstruction.NumRegImages() << " registered images...";
       LOG(INFO) << "Image path: " << image_path;
       LOG(INFO) << "Reconstruction has " << reconstruction.Points3D().size() << " 3D points before color extraction";
-      reconstruction.ExtractColorsForAllImages(image_path);
+      ExtractColorsParallel(reconstruction, image_path);
       LOG(INFO) << "Color extraction complete. Checking first few points...";
       // Log first few point colors to verify
       int count = 0;
@@ -77,7 +147,7 @@ void WriteGlomapReconstruction(
           rigs, cameras, frames, images, tracks, reconstruction, comp);
       // Read in colors - only for images in reconstruction (already filtered)
       if (image_path != "") {
-        reconstruction.ExtractColorsForAllImages(image_path);
+        ExtractColorsParallel(reconstruction, image_path);
       }
       colmap::CreateDirIfNotExists(
           reconstruction_path + "/" + std::to_string(comp), true);
