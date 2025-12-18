@@ -1,5 +1,9 @@
 #include "bundle_adjustment.h"
 
+#include <atomic>
+#include <chrono>
+#include <ceres/ceres.h>
+#include <thread>
 #include <colmap/estimators/cost_functions.h>
 #include <colmap/estimators/manifold.h>
 #include <colmap/sensor/models.h>
@@ -7,6 +11,55 @@
 #include <colmap/util/misc.h>
 
 namespace glomap {
+
+namespace {
+
+class SolverProgressLogger : public ceres::IterationCallback {
+ public:
+  SolverProgressLogger(std::string tag,
+                       int log_every_n_iterations,
+                       double log_every_seconds)
+      : tag_(std::move(tag)),
+        log_every_n_iterations_(std::max(1, log_every_n_iterations)),
+        log_every_seconds_(std::max(0.0, log_every_seconds)),
+        last_log_time_(std::chrono::steady_clock::now()) {}
+
+  ceres::CallbackReturnType operator()(const ceres::IterationSummary& summary) override {
+    const bool is_first = (summary.iteration == 0);
+    const bool every_n = (summary.iteration % log_every_n_iterations_ == 0);
+
+    bool every_t = false;
+    if (log_every_seconds_ > 0.0) {
+      const auto now = std::chrono::steady_clock::now();
+      const double dt =
+          std::chrono::duration_cast<std::chrono::duration<double>>(now - last_log_time_)
+              .count();
+      if (dt >= log_every_seconds_) {
+        every_t = true;
+        last_log_time_ = now;
+      }
+    }
+
+    if (is_first || every_n || every_t || summary.step_is_valid == false) {
+      LOG(INFO) << tag_ << " iter=" << summary.iteration
+                << " cost=" << summary.cost
+                << " cost_change=" << summary.cost_change
+                << " grad_max_norm=" << summary.gradient_max_norm
+                << " step_valid=" << summary.step_is_valid
+                << " iter_time_s=" << summary.iteration_time_in_seconds;
+    }
+
+    return ceres::SOLVER_CONTINUE;
+  }
+
+ private:
+  const std::string tag_;
+  const int log_every_n_iterations_;
+  const double log_every_seconds_;
+  std::chrono::steady_clock::time_point last_log_time_;
+};
+
+}  // namespace
 
 bool BundleAdjuster::Solve(std::unordered_map<rig_t, Rig>& rigs,
                            std::unordered_map<camera_t, Camera>& cameras,
@@ -115,8 +168,35 @@ bool BundleAdjuster::Solve(std::unordered_map<rig_t, Rig>& rigs,
      }
   }
 
-  options_.solver_options.minimizer_progress_to_stdout = VLOG_IS_ON(2);
-  ceres::Solve(options_.solver_options, problem_.get(), &summary);
+  ceres::Solver::Options solver_options = options_.solver_options;
+  solver_options.minimizer_progress_to_stdout = VLOG_IS_ON(2);
+  SolverProgressLogger progress_logger("[BA][Ceres]", /*log_every_n_iterations=*/10,
+                                      /*log_every_seconds=*/30.0);
+  solver_options.callbacks.push_back(&progress_logger);
+
+  std::atomic<bool> ba_solving{true};
+  const auto ba_solve_start = std::chrono::steady_clock::now();
+  std::thread ba_heartbeat([&]() {
+    using namespace std::chrono_literals;
+    while (ba_solving.load()) {
+      std::this_thread::sleep_for(30s);
+      if (!ba_solving.load()) {
+        break;
+      }
+      const double elapsed_s =
+          std::chrono::duration_cast<std::chrono::duration<double>>(
+              std::chrono::steady_clock::now() - ba_solve_start)
+              .count();
+      LOG(INFO) << "[BA][Ceres] still solving... elapsed_s=" << elapsed_s;
+    }
+  });
+
+  ceres::Solve(solver_options, problem_.get(), &summary);
+
+  ba_solving.store(false);
+  if (ba_heartbeat.joinable()) {
+    ba_heartbeat.join();
+  }
   if (VLOG_IS_ON(2))
     LOG(INFO) << summary.FullReport();
   else

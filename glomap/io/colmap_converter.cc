@@ -47,6 +47,30 @@ void ConvertGlomapToColmap(const std::unordered_map<rig_t, Rig>& rigs,
   for (auto& [frame_id, frame] : frames) {
     Frame frame_curr = frame;  // Copy the frame to avoid dangling pointer
     frame_curr.ResetRigPtr();
+
+    // Keep frame data consistent with the available images.
+    // Some upstream pruning steps can remove images from the `images` map
+    // without removing the corresponding camera data IDs from the frame.
+    // COLMAP's `Reconstruction::DeRegisterFrame()` assumes referenced images
+    // exist and will throw otherwise.
+    std::vector<colmap::data_t> missing_camera_data_ids;
+    for (const auto& data_id : frame_curr.DataIds()) {
+      if (data_id.sensor_id.type != colmap::SensorType::CAMERA) {
+        continue;
+      }
+      const image_t image_id = static_cast<image_t>(data_id.id);
+      if (images.find(image_id) == images.end()) {
+        missing_camera_data_ids.push_back(data_id);
+      }
+    }
+    if (!missing_camera_data_ids.empty()) {
+      for (const auto& data_id : missing_camera_data_ids) {
+        frame_curr.DataIds().erase(data_id);
+      }
+      VLOG(1) << "Frame " << frame_id << ": removed "
+              << missing_camera_data_ids.size()
+              << " camera data IDs that are missing from images map";
+    }
     reconstruction.AddFrame(frame_curr);
   }
 
@@ -87,7 +111,11 @@ void ConvertGlomapToColmap(const std::unordered_map<rig_t, Rig>& rigs,
 
     // Add track element
     for (auto& observation : track.observations) {
-      const Image& image = images.at(observation.first);
+      const auto image_it = images.find(observation.first);
+      if (image_it == images.end()) {
+        continue;
+      }
+      const Image& image = image_it->second;
       if (!image.IsRegistered() ||
           (cluster_id != -1 && image.ClusterId() != cluster_id))
         continue;

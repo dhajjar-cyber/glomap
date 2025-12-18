@@ -91,12 +91,33 @@ int RunMapper(int argc, char** argv) {
   std::string checkpoint_tracks_path = output_path + "/checkpoint_tracks";
   std::string checkpoint_rotation_path = output_path + "/checkpoint_rotation";
 
-  auto IsValidCheckpoint = [](const std::string& path) {
-    return colmap::ExistsDir(path) &&
-           (colmap::ExistsFile(path + "/cameras.bin") || colmap::ExistsFile(path + "/cameras.txt")) &&
-           (colmap::ExistsFile(path + "/images.bin") || colmap::ExistsFile(path + "/images.txt")) &&
-           (colmap::ExistsFile(path + "/points3D.bin") || colmap::ExistsFile(path + "/points3D.txt")) &&
-           colmap::ExistsFile(path + "/view_graph.bin");
+  auto GetCheckpointModelRoot = [](const std::string& checkpoint_path) {
+    // WriteGlomapReconstruction writes the model into <checkpoint_path>/0/ for
+    // the common single-component case. Support both layouts.
+    return colmap::ExistsDir(checkpoint_path + "/0") ? (checkpoint_path + "/0")
+                                                     : checkpoint_path;
+  };
+
+  auto IsValidCheckpoint = [&](const std::string& checkpoint_path) {
+    if (!colmap::ExistsDir(checkpoint_path) ||
+        !colmap::ExistsFile(checkpoint_path + "/view_graph.bin")) {
+      return false;
+    }
+
+    const std::string model_root = GetCheckpointModelRoot(checkpoint_path);
+
+    const bool has_rigs = colmap::ExistsFile(model_root + "/rigs.bin") ||
+                          colmap::ExistsFile(model_root + "/rigs.txt");
+    const bool has_cameras = colmap::ExistsFile(model_root + "/cameras.bin") ||
+                             colmap::ExistsFile(model_root + "/cameras.txt");
+    const bool has_frames = colmap::ExistsFile(model_root + "/frames.bin") ||
+                            colmap::ExistsFile(model_root + "/frames.txt");
+    const bool has_images = colmap::ExistsFile(model_root + "/images.bin") ||
+                            colmap::ExistsFile(model_root + "/images.txt");
+    const bool has_points = colmap::ExistsFile(model_root + "/points3D.bin") ||
+                            colmap::ExistsFile(model_root + "/points3D.txt");
+
+    return has_rigs && has_cameras && has_frames && has_images && has_points;
   };
 
   if (IsValidCheckpoint(checkpoint_ba_path)) {
@@ -104,7 +125,7 @@ int RunMapper(int argc, char** argv) {
     LOG(INFO) << "Resuming from Bundle Adjustment...";
 
     colmap::Reconstruction recon;
-    recon.Read(checkpoint_ba_path);
+    recon.Read(GetCheckpointModelRoot(checkpoint_ba_path));
     ConvertColmapToGlomap(recon, rigs, cameras, frames, images, tracks);
     ReadExtraData(checkpoint_ba_path + "/view_graph.bin", view_graph, frames);
 
@@ -121,7 +142,7 @@ int RunMapper(int argc, char** argv) {
     LOG(INFO) << "Resuming from Global Positioning...";
 
     colmap::Reconstruction recon;
-    recon.Read(checkpoint_gp_path);
+    recon.Read(GetCheckpointModelRoot(checkpoint_gp_path));
     ConvertColmapToGlomap(recon, rigs, cameras, frames, images, tracks);
     ReadExtraData(checkpoint_gp_path + "/view_graph.bin", view_graph, frames);
 
@@ -137,7 +158,7 @@ int RunMapper(int argc, char** argv) {
     LOG(INFO) << "Resuming from Track Establishment...";
 
     colmap::Reconstruction recon;
-    recon.Read(checkpoint_tracks_path);
+    recon.Read(GetCheckpointModelRoot(checkpoint_tracks_path));
     ConvertColmapToGlomap(recon, rigs, cameras, frames, images, tracks);
     ReadExtraData(checkpoint_tracks_path + "/view_graph.bin", view_graph, frames);
 
@@ -152,7 +173,7 @@ int RunMapper(int argc, char** argv) {
     LOG(INFO) << "Resuming from Rotation Averaging...";
 
     colmap::Reconstruction recon;
-    recon.Read(checkpoint_rotation_path);
+    recon.Read(GetCheckpointModelRoot(checkpoint_rotation_path));
     ConvertColmapToGlomap(recon, rigs, cameras, frames, images, tracks);
     ReadExtraData(checkpoint_rotation_path + "/view_graph.bin", view_graph, frames);
 

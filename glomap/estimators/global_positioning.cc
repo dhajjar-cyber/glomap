@@ -3,11 +3,71 @@
 #include "glomap/estimators/cost_function.h"
 #include "glomap/math/rigid3d.h"
 
+#include <atomic>
+#include <chrono>
+#include <ceres/ceres.h>
+#include <thread>
 #include <colmap/util/cuda.h>
 #include <colmap/util/misc.h>
 
 namespace glomap {
 namespace {
+
+inline void LogStepDuration(
+    const std::string& label,
+    const std::chrono::steady_clock::time_point& start_time) {
+  const auto end_time = std::chrono::steady_clock::now();
+  const double seconds =
+      std::chrono::duration_cast<std::chrono::duration<double>>(end_time -
+                                                                 start_time)
+          .count();
+  LOG(INFO) << label << " took " << seconds << " s";
+}
+
+class SolverProgressLogger : public ceres::IterationCallback {
+ public:
+  SolverProgressLogger(std::string tag,
+                       int log_every_n_iterations,
+                       double log_every_seconds)
+      : tag_(std::move(tag)),
+        log_every_n_iterations_(std::max(1, log_every_n_iterations)),
+        log_every_seconds_(std::max(0.0, log_every_seconds)),
+        last_log_time_(std::chrono::steady_clock::now()) {}
+
+  ceres::CallbackReturnType operator()(const ceres::IterationSummary& summary) override {
+    const bool is_first = (summary.iteration == 0);
+    const bool every_n = (summary.iteration % log_every_n_iterations_ == 0);
+
+    bool every_t = false;
+    if (log_every_seconds_ > 0.0) {
+      const auto now = std::chrono::steady_clock::now();
+      const double dt =
+          std::chrono::duration_cast<std::chrono::duration<double>>(now - last_log_time_)
+              .count();
+      if (dt >= log_every_seconds_) {
+        every_t = true;
+        last_log_time_ = now;
+      }
+    }
+
+    if (is_first || every_n || every_t || summary.step_is_valid == false) {
+      LOG(INFO) << tag_ << " iter=" << summary.iteration
+                << " cost=" << summary.cost
+                << " cost_change=" << summary.cost_change
+                << " grad_max_norm=" << summary.gradient_max_norm
+                << " step_valid=" << summary.step_is_valid
+                << " iter_time_s=" << summary.iteration_time_in_seconds;
+    }
+
+    return ceres::SOLVER_CONTINUE;
+  }
+
+ private:
+  const std::string tag_;
+  const int log_every_n_iterations_;
+  const double log_every_seconds_;
+  std::chrono::steady_clock::time_point last_log_time_;
+};
 
 Eigen::Vector3d RandVector3d(std::mt19937& random_generator,
                              double low,
@@ -31,6 +91,12 @@ bool GlobalPositioner::Solve(const ViewGraph& view_graph,
                              std::unordered_map<frame_t, Frame>& frames,
                              std::unordered_map<image_t, Image>& images,
                              std::unordered_map<track_t, Track>& tracks) {
+  LOG(INFO) << "[GP] Starting Global Positioning";
+  LOG(INFO) << "[GP] Input sizes: rigs=" << rigs.size()
+            << ", cameras=" << cameras.size() << ", frames=" << frames.size()
+            << ", images=" << images.size() << ", tracks=" << tracks.size()
+            << ", pairs=" << view_graph.image_pairs.size();
+
   if (rigs.size() > 1) {
     LOG(ERROR) << "Number of camera rigs = " << rigs.size();
   }
@@ -77,35 +143,93 @@ bool GlobalPositioner::Solve(const ViewGraph& view_graph,
   LOG(INFO) << "Setting up the global positioner problem";
 
   // Setup the problem.
-  SetupProblem(view_graph, rigs, tracks);
+  {
+    const auto t0 = std::chrono::steady_clock::now();
+    SetupProblem(view_graph, rigs, tracks);
+    LogStepDuration("[GP] SetupProblem", t0);
+  }
 
   // Initialize camera translations to be random.
   // Also, convert the camera pose translation to be the camera center.
-  InitializeRandomPositions(view_graph, frames, images, tracks);
+  {
+    const auto t0 = std::chrono::steady_clock::now();
+    InitializeRandomPositions(view_graph, frames, images, tracks);
+    LogStepDuration("[GP] InitializeRandomPositions", t0);
+  }
 
   // Add the camera to camera constraints to the problem.
   // TODO: support the relative constraints with trivial frames to a non trivial
   // frame
   if (options_.constraint_type != GlobalPositionerOptions::ONLY_POINTS) {
+    const auto t0 = std::chrono::steady_clock::now();
     AddCameraToCameraConstraints(view_graph, images);
+    LogStepDuration("[GP] AddCameraToCameraConstraints", t0);
   }
 
   // Add the point to camera constraints to the problem.
   if (options_.constraint_type != GlobalPositionerOptions::ONLY_CAMERAS) {
+    const auto t0 = std::chrono::steady_clock::now();
     AddPointToCameraConstraints(rigs, cameras, frames, images, tracks);
+    LogStepDuration("[GP] AddPointToCameraConstraints", t0);
   }
 
-  AddCamerasAndPointsToParameterGroups(rigs, frames, tracks);
+  {
+    const auto t0 = std::chrono::steady_clock::now();
+    AddCamerasAndPointsToParameterGroups(rigs, frames, tracks);
+    LogStepDuration("[GP] AddCamerasAndPointsToParameterGroups", t0);
+  }
 
   // Parameterize the variables, set image poses / tracks / scales to be
   // constant if desired
-  ParameterizeVariables(rigs, frames, tracks);
+  {
+    const auto t0 = std::chrono::steady_clock::now();
+    ParameterizeVariables(rigs, frames, tracks);
+    LogStepDuration("[GP] ParameterizeVariables", t0);
+  }
+
+  if (problem_ != nullptr) {
+    LOG(INFO) << "[GP] Problem stats: parameters=" << problem_->NumParameters()
+              << ", parameter_blocks=" << problem_->NumParameterBlocks()
+              << ", residual_blocks=" << problem_->NumResidualBlocks();
+  }
 
   LOG(INFO) << "Solving the global positioner problem";
 
   ceres::Solver::Summary summary;
-  options_.solver_options.minimizer_progress_to_stdout = VLOG_IS_ON(2);
-  ceres::Solve(options_.solver_options, problem_.get(), &summary);
+  ceres::Solver::Options solver_options = options_.solver_options;
+  solver_options.minimizer_progress_to_stdout = VLOG_IS_ON(2);
+  // Emit periodic INFO logs during the solve, even when Ceres' stdout progress
+  // is buffered or disabled.
+  SolverProgressLogger progress_logger("[GP][Ceres]", /*log_every_n_iterations=*/10,
+                                      /*log_every_seconds=*/30.0);
+  solver_options.callbacks.push_back(&progress_logger);
+
+  // If Ceres spends a long time before the first iteration boundary (e.g.,
+  // large linear solver setup/factorization), iteration callbacks will not fire.
+  // This heartbeat guarantees visibility after the "Solving..." line.
+  std::atomic<bool> gp_solving{true};
+  const auto gp_solve_start = std::chrono::steady_clock::now();
+  std::thread gp_heartbeat([&]() {
+    using namespace std::chrono_literals;
+    while (gp_solving.load()) {
+      std::this_thread::sleep_for(30s);
+      if (!gp_solving.load()) {
+        break;
+      }
+      const double elapsed_s =
+          std::chrono::duration_cast<std::chrono::duration<double>>(
+              std::chrono::steady_clock::now() - gp_solve_start)
+              .count();
+      LOG(INFO) << "[GP][Ceres] still solving... elapsed_s=" << elapsed_s;
+    }
+  });
+
+  ceres::Solve(solver_options, problem_.get(), &summary);
+
+  gp_solving.store(false);
+  if (gp_heartbeat.joinable()) {
+    gp_heartbeat.join();
+  }
 
   if (VLOG_IS_ON(2)) {
     LOG(INFO) << summary.FullReport();
