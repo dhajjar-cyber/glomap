@@ -142,6 +142,8 @@ void OptionManager::AddViewGraphCalibrationOptions() {
                               &mapper->opt_vgcalib.thres_higher_ratio);
   AddAndRegisterDefaultOption("ViewGraphCalib.thres_two_view_error",
                               &mapper->opt_vgcalib.thres_two_view_error);
+  AddAndRegisterDefaultOption("ViewGraphCalib.force_refinement",
+                              &mapper->opt_vgcalib.force_refinement);
 }
 
 void OptionManager::AddRelativePoseEstimationOptions() {

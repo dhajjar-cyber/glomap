@@ -22,6 +22,9 @@ struct ViewGraphCalibratorOptions : public OptimizationBaseOptions {
     thres_loss_function = 1e-2;
   }
 
+  // Force refinement of intrinsics even if priors are present
+  bool force_refinement = false;
+
   std::shared_ptr<ceres::LossFunction> CreateLossFunction() {
     return std::make_shared<ceres::CauchyLoss>(thres_loss_function);
   }

@@ -110,7 +110,9 @@ size_t ViewGraphCalibrator::ParameterizeCameras(
 
     num_cameras++;
     problem_->SetParameterLowerBound(&(focals_[camera_id]), 0, 1e-3);
-    if (camera.has_prior_focal_length) {
+    
+    // Fix the camera if it has prior and we are not forcing refinement
+    if (camera.has_prior_focal_length && !options_.force_refinement) {
       problem_->SetParameterBlockConstant(&(focals_[camera_id]));
       num_cameras--;
     }
