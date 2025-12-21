@@ -146,6 +146,10 @@ GLOMAP offers two ways to handle multi-camera rigs. Understanding the difference
         *   **Working Set Filtering:** Once poses are found, the system applies geometric constraints (angle error, reprojection error) to the **Working Set** (all tracks established in Phase 6).
         *   *Note:* This step does **not** go back to the full unfiltered dataset to find new tracks; it only filters the existing Working Set.
         *   **Output:** The filtered **Working Set** is passed to Phase 8 for Bundle Adjustment.
+    *   **Handling Degeneracy (Pure Rotation):**
+        *   **Context:** Zero-baseline matches (e.g., panoramic rotation) are degenerate for triangulation but provide valid orientation/positioning constraints.
+        *   **Strategy:** GLOMAP *includes* these links in the Global Positioning solve to constrain camera centers and prevent graph fragmentation.
+        *   **Cleanup:** *After* poses are solved, `FilterTrackTriangulationAngle` removes tracks with small baselines to prevent unstable/infinite 3D points in the final output.
 *   **Checkpoint:** `checkpoint_gp`
     *   **Location:** `[output_path]/checkpoint_gp/`
     *   **Files:** `cameras.bin`, `images.bin`, `points3D.bin`
