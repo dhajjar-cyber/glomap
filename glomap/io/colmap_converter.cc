@@ -338,8 +338,18 @@ void ConvertDatabaseToGlomap(const colmap::Database& database,
 
   // Add the rigs
   std::vector<colmap::Rig> rigs_colmap = database.ReadAllRigs();
-  for (auto& rig : rigs_colmap) {
-    rigs[rig.RigId()] = rig;
+  
+  if (!rigs_colmap.empty()) {
+    for (auto& rig : rigs_colmap) {
+      if (rig.RefSensorId().id != kInvalidSensorId) {
+        rigs[rig.RigId()] = rig;
+      }
+    }
+  } else {
+      // Loop for trivial case (empty)
+      for (auto& rig : rigs_colmap) {
+        rigs[rig.RigId()] = rig;
+      }
   }
 
   // Add the frames

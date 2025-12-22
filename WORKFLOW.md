@@ -39,6 +39,40 @@ GLOMAP offers two ways to handle multi-camera rigs. Understanding the difference
 | **Rig Extrinsics** | **Fixed** (Hard Constraint) | **Optimized** (Soft Constraint / Refined) |
 | **Solver Logic** | "Move the whole rig to fit points" | "Move the rig AND tweak camera positions to fit points" |
 
+## Phase 0: Learnings & Diagnostics (COLMAP Deep Dive)
+*   **Goal:** Ensure the COLMAP database contains valid geometric data to support GLOMAP's initialization.
+*   **Critical Finding (The "Zero-Rotation" Bug):**
+    *   **Problem:** By default, COLMAP's feature matchers (`sequential`, `vocab_tree`, `exhaustive`) do **not** compute the relative pose ($R, t$) between image pairs, even if they verify the geometry (Essential/Fundamental matrix).
+    *   **Mechanism:**
+        *   `EstimateTwoViewGeometry` (in `src/colmap/estimators/two_view_geometry.cc`) initializes the result struct with `ConfigurationType::UNDEFINED` and Identity rotation.
+        *   If `options.compute_relative_pose` is `false` (default), the function `EstimateTwoViewGeometryPose` is **skipped**.
+        *   The database writer `WriteTwoViewGeometry` then saves this Identity rotation (0 degrees) and zero translation to the `two_view_geometries` table (`qvec`, `tvec`).
+        *   **Result:** A database where every image pair has `qvec=[1,0,0,0]` (0° rotation), despite having valid `rows` (inliers) and `config` (e.g., 2 for Essential Matrix).
+    *   **Impact on GLOMAP:**
+        *   GLOMAP attempts to initialize from these poses. While it has logic to decompose the Essential Matrix itself, starting from a pure degenerate (Identity) state can lead to massive rotation errors (e.g., flipping 180° or jumping 60°+ between frames) due to missing cheirality checks or unstable decomposition.
+    *   **The Fix:** You **MUST** explicitly enable relative pose computation in the COLMAP matcher commands.
+        *   Flag: `--TwoViewGeometry.compute_relative_pose 1`
+*   **Key Source Code References:**
+    *   **Estimator Entry:** `src/colmap/estimators/two_view_geometry.cc` -> `EstimateTwoViewGeometry`
+    *   **Pose Calculation:** `src/colmap/estimators/two_view_geometry.cc` -> `EstimateTwoViewGeometryPose` (only called if flag is true)
+    *   **Database Writer:** `src/colmap/scene/database_sqlite.cc` -> `WriteTwoViewGeometry`
+    *   **Options:** `src/colmap/estimators/two_view_geometry.h` -> `TwoViewGeometryOptions`
+
+### Phase 0.1: Functional & Architectural Insights
+*   **Feature Extraction Architecture (`FeatureExtractorController`):**
+    *   **Pipeline:** Uses a threaded "Job Queue" system to manage memory efficiently:
+        *   `ImageReader` -> `ResizerQueue` -> `ExtractorQueue` -> `WriterQueue` -> `Database`.
+    *   **Memory Management:** Each stage has limited queue size (kQueueSize=1) to prevent loading thousands of high-res images into RAM.
+    *   **SiftGPU:** Automatically attempts to use CUDA. If `gpu_index` is -1, it utilizes all available GPUs.
+*   **Feature Matching Architecture (`FeatureMatcherThread`):**
+    *   **Two-Stage Process:**
+        1.  **Pair Matching:** Iterates through image pairs (guided by the specific matcher type: Sequential, Exhaustive, VocabTree) and matches descriptors.
+        2.  **Rig Verification (Optional):** Runs *after* all image pairs are processed. It checks consistency using the `rig_config.json` definitions.
+            *   *Crucial Note:* Rig verification requires **all** image pairs between two temporal frames to be matched first.
+*   **Database Interactions:**
+    *   **Transactions:** Writes are wrapped in `DatabaseTransaction` to ensure atomic updates (preventing corrupted partial states).
+    *   **Locking:** SQLite allows concurrent reads but only one writer. The `FeatureWriterThread` is the single serialization point for database modifications.
+
 ## Phase 1: Prerequisites & Input Preparation
 *   **Goal:** Ensure all necessary data structures are in place before launching the reconstruction.
 *   **Input:**
